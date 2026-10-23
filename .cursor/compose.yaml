@@ -1,0 +1,20 @@
+# Профиль Cursor rules. См. ~/dev/cursor-rules-composer.
+
+language: ts
+tracker: github
+git: issue-branch
+
+name: sherpa
+repo: skepsik/sherpa
+
+board:
+  owner: skepsik
+  number: 6
+
+issues:
+  area_labels:
+    - bot
+    - runner
+    - packages
+    - infra
+    - docs

@@ -1,0 +1,93 @@
+---
+description: Ветки, коммиты, merge
+alwaysApply: false
+---
+
+# Git
+
+**Канон веток и коммитов — только этот файл.**
+
+**master** = mainline. Standalone → `feat-<N>`. Epic → `epic-<P>` + child `feat-<N>`.
+
+## Epic vs standalone
+
+| Задача | Ветка | Base | Merge в |
+| ------ | ----- | ---- | ------- |
+| Parent / epic | `epic-<P>` | `master` | `master` (epic целиком) |
+| Child epic | `feat-<N>` | `epic-<P>` | `epic-<P>` |
+| Standalone | `feat-<N>` | `master` | `master` |
+
+`P` — id parent epic. `N` — id текущей задачи (как даёт tracker).
+
+Проверить parent: `gh issue view <N> --json parent`.
+
+## Грязное дерево перед сменой ветки
+
+Перед `checkout` / `switch` / `checkout -B` / `reset`, затрагивающим рабочее дерево: `git status`.
+
+Если есть незакоммиченные изменения (modified / staged / untracked, которые будут затронуты) — **не** переключать и **не** сбрасывать. Остановиться и спросить владельца (роль без диалога с владельцем — стоп, отчёт наверх: грязное дерево, список путей).
+
+Запрет реализации: не делать `checkout -f` / `reset --hard` / `clean` «чтобы очистить путь», пока владелец явно не разрешил снос.
+
+## Одна задача = одна ветка
+
+В ветке задачи — только коммиты с ref этой задачи (#<N> …).
+
+## Формат коммита
+
+Заголовок постановки ≠ сообщение коммита.
+
+### С задачей (work на рабочей ветке)
+
+```
+#<N> <type>: <существительное + контекст на русском>
+```
+
+Без ref задачи (chore/docs на `master` / epic в **sherpa**):
+
+```
+<type>: <описание>
+```
+
+Канон в **`docs/`** после Gate по work-issue — с ref issue:
+
+```
+docs: <описание> (#<N>)
+```
+
+| type | Когда |
+| ---- | ----- |
+| `feat` | продукт |
+| `fix` | баг |
+| `refactor` | без смены поведения |
+| `docs` | документация |
+| `chore` | CI, tooling, rules |
+| `test` | тесты |
+
+Агенты **всегда предлагают** текст коммита после gate; **`git commit` — только владелец**.
+
+## Merge
+
+**Только по команде владельца.**
+
+| Что | Куда | Когда |
+| --- | ---- | ----- |
+| `feat-<N>` | `epic-<P>` | child готова (gate ok) → merge → **close `#N`** |
+| `epic-<P>` | `master` | epic готов (дети closed + критерии эпика на `epic-<P>`) → merge → **close `#P`** |
+| `feat-<N>` | `master` | **только standalone** (нет parent) |
+
+**Запрет:** child эпика **не** вливать в `master` до готовности всего эпика. Путь только `feat-<N>` → `epic-<P>` → `master`.
+
+Закрытие issue = работа уже в целевой ветке (child — в `epic-<P>`, epic — в `master`), не «готово на feat сбоку».
+
+После merge — удалить рабочую ветку local + remote; `epic-<P>` — после merge в `master`.
+
+## Base для diff
+
+Для review: `git diff <base>...HEAD`, base — по таблице Epic vs standalone (ветка задачи).
+
+## Запуск
+
+```
+@git
+```

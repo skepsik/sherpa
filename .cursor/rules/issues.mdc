@@ -1,0 +1,53 @@
+---
+description: Work-issue — создание, title/labels/relations; тело — skill cold-start
+alwaysApply: false
+---
+
+# Issues
+
+## Постановка (тело)
+
+Перед созданием или правкой тела issue — skill **`work-issue-cold-start-spec`**:
+
+`.cursor/skills/work-issue-cold-start-spec/SKILL.md`
+
+Дальше по skill: `category-content.md` и проектный `adapter.md` (тот же каталог).
+
+Публичная поверхность / runtime-deps, которых не было дословно в постановке →
+механическое «Сверх постановки» (`coder-finalize.mdc`) → disposition на gate
+(штатный путь в канон).
+
+Продукт — в эпике. На нарезке work-issue всплыл продукт вне эпика —
+эскалация владельцу до кодера (`work-issue-cold-start-spec`).
+
+## Создание
+
+`.cursor/scripts/gh-create-work-issue.sh` — issue и relations (`--parent`,
+`--blocked-by`, `--blocking`, `-l`, …). Детали флагов — skill `gh-workflow`.
+Скрипт кладёт issue на board [sherpa](https://github.com/users/skepsik/projects/6) (#6).
+
+```bash
+.cursor/scripts/gh-create-work-issue.sh -t "…" -F body.md
+.cursor/scripts/gh-create-work-issue.sh -t "…" -F body.md --parent <N> --blocked-by <N>
+```
+
+## Title, labels, relations
+
+|                  | Правило                                                                 |
+| ---------------- | ----------------------------------------------------------------------- |
+| **Title**        | Суть одной фразой: `Bot — эхо в личку`                                  |
+| **Labels тип**   | Обычно без type-label. `refactor` / `bug` / `discovery` — по смыслу     |
+| **Labels область** | По смыслу (0..n): bot, runner, packages, infra, docs                  |
+| **Relations**    | Через скрипт: `--parent`, `--blocked-by`, `--blocking`                  |
+
+## Scope в комментарии реализации
+
+```markdown
+Scope: apps/runner/
+```
+
+## Запуск
+
+```
+@issues
+```
