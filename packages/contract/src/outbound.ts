@@ -6,9 +6,10 @@ import { findPlace } from './place';
 import { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';
 
 export const OUTBOUND_COMMAND_TYPES = [
-  'send_text',
-  'send_buttons',
-  'edit_text',
+  'send_message',
+  'send_question',
+  'resolve_question',
+  'set_status',
   'create_topic',
 ] as const;
 
@@ -22,14 +23,17 @@ export const OUTBOUND_ERROR_CODES = [
 export const OUTBOUND_RESULT_TYPES = [
   'create_topic_ok',
   'error',
+  'question_ok',
   'send_ok',
 ] as const;
 
 export const OUTBOUND_SEND_OK_COMMAND_TYPES = [
-  'send_text',
-  'send_buttons',
-  'edit_text',
+  'send_message',
+  'resolve_question',
+  'set_status',
 ] as const;
+
+export const OUTBOUND_STATUS_VALUES = ['busy', 'idle'] as const;
 
 /**
  * Команда раннер → транспорт.
@@ -37,9 +41,10 @@ export const OUTBOUND_SEND_OK_COMMAND_TYPES = [
  */
 export type OutboundCommand =
   | OutboundCreateTopic
-  | OutboundEditText
-  | OutboundSendButtons
-  | OutboundSendText;
+  | OutboundResolveQuestion
+  | OutboundSendMessage
+  | OutboundSendQuestion
+  | OutboundSetStatus;
 
 /** Envelope команды на проводе. */
 export type OutboundCommandEnvelope = {
@@ -67,44 +72,47 @@ export type OutboundCreateTopicOk = {
 };
 
 /**
- * Редактировать уже отправленное сообщение (стрим в топик / снять кнопки).
- * `buttons` отсутствует — разметку не трогать; `[]` — убрать inline-кнопки;
- * непустая замена — нужен `requestId` для pack `callback_data` на транспорте.
- */
-export type OutboundEditText = {
-  /** Если задано (в т.ч. `[]`) — заменить reply markup. */
-  buttons?: OutboundInlineButton[];
-  messageId: string;
-  place: Place;
-  /** Корреляция кнопок; обязателен транспорту при непустой замене `buttons`. */
-  requestId?: string;
-  text: string;
-  type: 'edit_text';
-};
-
-/**
  * Отказ транспорта: команда не исполнена.
- * `code` — invent; канал — ответ на команду.
+ * `commandType` — тип команды, на которой отказ.
  */
 export type OutboundError = {
   code: OutboundErrorCode;
-  /** Тип исходной команды, если известен. */
-  commandType?: OutboundCommandType;
+  commandType: OutboundCommandType;
   message?: string;
   type: 'error';
 };
 
 export type OutboundErrorCode = (typeof OUTBOUND_ERROR_CODES)[number];
 
-/** Кнопка: `data` станет `InboundCallback.data` при нажатии. */
+/** Кнопка: `data` станет `InboundQuestionAnswer.data` при нажатии. */
 export type OutboundInlineButton = {
   data: string;
   label: string;
 };
 
+/**
+ * Успех `send_question`: id сообщения нужен для `resolve_question`.
+ */
+export type OutboundQuestionOk = {
+  commandType: 'send_question';
+  messageId: string;
+  type: 'question_ok';
+};
+
+/**
+ * Зафиксировать выбор на сообщении-вопросе: новый текст, кнопки снять.
+ * Единственный edit на проводе.
+ */
+export type OutboundResolveQuestion = {
+  messageId: string;
+  place: Place;
+  text: string;
+  type: 'resolve_question';
+};
+
 /** Исход команды транспорт → раннер. */
 export type OutboundResult =
-  OutboundCreateTopicOk | OutboundError | OutboundSendOk;
+  OutboundCreateTopicOk | OutboundError | OutboundQuestionOk | OutboundSendOk;
 
 /** Envelope исхода на проводе (тот же `direction`, поле `result`). */
 export type OutboundResultEnvelope = {
@@ -117,35 +125,42 @@ export type OutboundResultEnvelope = {
 
 export type OutboundResultType = (typeof OUTBOUND_RESULT_TYPES)[number];
 
-/**
- * Сообщение с inline-кнопками (permission / подтверждение).
- * `requestId` + `buttons[].data` совместимы с inbound `callback`.
- */
-export type OutboundSendButtons = {
-  buttons: OutboundInlineButton[];
+/** Отправить текст в место (личка или топик). */
+export type OutboundSendMessage = {
   place: Place;
-  requestId: string;
   text: string;
-  type: 'send_buttons';
+  type: 'send_message';
 };
 
-/** Успешная отправка или правка текста/кнопок. */
+/** Успех `send_message` / `resolve_question` / `set_status` — без `messageId`. */
 export type OutboundSendOk = {
   commandType: OutboundSendOkCommandType;
-  /** Id сообщения в транспорте (для последующего edit_text). */
-  messageId: string;
   type: 'send_ok';
 };
 
 export type OutboundSendOkCommandType =
   (typeof OUTBOUND_SEND_OK_COMMAND_TYPES)[number];
 
-/** Отправить текст в место (личка или топик). */
-export type OutboundSendText = {
+/**
+ * Вопрос с inline-кнопками.
+ * `requestId` + `buttons[].data` совместимы с inbound `question_answer`.
+ */
+export type OutboundSendQuestion = {
+  buttons: OutboundInlineButton[];
   place: Place;
+  requestId: string;
   text: string;
-  type: 'send_text';
+  type: 'send_question';
 };
+
+/** Статус индикатора в Place; исполнение на транспорте — заглушка. */
+export type OutboundSetStatus = {
+  place: Place;
+  status: OutboundStatus;
+  type: 'set_status';
+};
+
+export type OutboundStatus = (typeof OUTBOUND_STATUS_VALUES)[number];
 
 export function encodeOutbound(id: string, command: OutboundCommand): string {
   const envelope: OutboundCommandEnvelope = {
@@ -216,12 +231,14 @@ function findCommand(value: unknown): null | OutboundCommand {
   switch (value.type) {
     case 'create_topic':
       return findCreateTopic(value);
-    case 'edit_text':
-      return findEditText(value);
-    case 'send_buttons':
-      return findSendButtons(value);
-    case 'send_text':
-      return findSendText(value);
+    case 'resolve_question':
+      return findResolveQuestion(value);
+    case 'send_message':
+      return findSendMessage(value);
+    case 'send_question':
+      return findSendQuestion(value);
+    case 'set_status':
+      return findSetStatus(value);
     default:
       return assertNever(value.type);
   }
@@ -245,41 +262,17 @@ function findCreateTopicOk(
   return { place, type: 'create_topic_ok' };
 }
 
-function findEditText(value: Record<string, unknown>): null | OutboundEditText {
-  const place = findPlace(value.place);
-  if (!place) return null;
-  const messageId = findNonEmptyString(value.messageId);
-  if (!messageId) return null;
-  const text = findNonEmptyString(value.text);
-  if (!text) return null;
-  let requestId: string | undefined;
-  if (value.requestId !== undefined) {
-    const id = findNonEmptyString(value.requestId);
-    if (!id) return null;
-    requestId = id;
-  }
-  if (value.buttons === undefined) {
-    return requestId === undefined
-      ? { messageId, place, text, type: 'edit_text' }
-      : { messageId, place, requestId, text, type: 'edit_text' };
-  }
-  const buttons = findButtons(value.buttons);
-  if (!buttons) return null;
-  return requestId === undefined
-    ? { buttons, messageId, place, text, type: 'edit_text' }
-    : { buttons, messageId, place, requestId, text, type: 'edit_text' };
-}
-
 function findError(value: Record<string, unknown>): null | OutboundError {
   if (!isErrorCode(value.code)) return null;
-  const error: OutboundError = { code: value.code, type: 'error' };
+  if (!isCommandType(value.commandType)) return null;
+  const error: OutboundError = {
+    code: value.code,
+    commandType: value.commandType,
+    type: 'error',
+  };
   if (value.message !== undefined) {
     if (typeof value.message !== 'string') return null;
     error.message = value.message;
-  }
-  if (value.commandType !== undefined) {
-    if (!isCommandType(value.commandType)) return null;
-    error.commandType = value.commandType;
   }
   return error;
 }
@@ -312,6 +305,27 @@ function findOutboundResultEnvelope(
   return { id, result };
 }
 
+function findQuestionOk(
+  value: Record<string, unknown>,
+): null | OutboundQuestionOk {
+  if (value.commandType !== 'send_question') return null;
+  const messageId = findNonEmptyString(value.messageId);
+  if (!messageId) return null;
+  return { commandType: 'send_question', messageId, type: 'question_ok' };
+}
+
+function findResolveQuestion(
+  value: Record<string, unknown>,
+): null | OutboundResolveQuestion {
+  const place = findPlace(value.place);
+  if (!place) return null;
+  const messageId = findNonEmptyString(value.messageId);
+  if (!messageId) return null;
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
+  return { messageId, place, text, type: 'resolve_question' };
+}
+
 function findResult(value: unknown): null | OutboundResult {
   if (!isRecord(value)) return null;
   if (!isResultType(value.type)) return null;
@@ -320,6 +334,8 @@ function findResult(value: unknown): null | OutboundResult {
       return findCreateTopicOk(value);
     case 'error':
       return findError(value);
+    case 'question_ok':
+      return findQuestionOk(value);
     case 'send_ok':
       return findSendOk(value);
     default:
@@ -327,9 +343,25 @@ function findResult(value: unknown): null | OutboundResult {
   }
 }
 
-function findSendButtons(
+function findSendMessage(
   value: Record<string, unknown>,
-): null | OutboundSendButtons {
+): null | OutboundSendMessage {
+  const place = findPlace(value.place);
+  if (!place) return null;
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
+  return { place, text, type: 'send_message' };
+}
+
+function findSendOk(value: Record<string, unknown>): null | OutboundSendOk {
+  if (!isSendOkCommandType(value.commandType)) return null;
+  if (value.messageId !== undefined) return null;
+  return { commandType: value.commandType, type: 'send_ok' };
+}
+
+function findSendQuestion(
+  value: Record<string, unknown>,
+): null | OutboundSendQuestion {
   const place = findPlace(value.place);
   if (!place) return null;
   const text = findNonEmptyString(value.text);
@@ -338,22 +370,16 @@ function findSendButtons(
   if (!requestId) return null;
   const buttons = findButtons(value.buttons);
   if (!buttons || buttons.length === 0) return null;
-  return { buttons, place, requestId, text, type: 'send_buttons' };
+  return { buttons, place, requestId, text, type: 'send_question' };
 }
 
-function findSendOk(value: Record<string, unknown>): null | OutboundSendOk {
-  if (!isSendOkCommandType(value.commandType)) return null;
-  const messageId = findNonEmptyString(value.messageId);
-  if (!messageId) return null;
-  return { commandType: value.commandType, messageId, type: 'send_ok' };
-}
-
-function findSendText(value: Record<string, unknown>): null | OutboundSendText {
+function findSetStatus(
+  value: Record<string, unknown>,
+): null | OutboundSetStatus {
   const place = findPlace(value.place);
   if (!place) return null;
-  const text = findNonEmptyString(value.text);
-  if (!text) return null;
-  return { place, text, type: 'send_text' };
+  if (!isStatus(value.status)) return null;
+  return { place, status: value.status, type: 'set_status' };
 }
 
 function isCommandType(value: unknown): value is OutboundCommandType {
@@ -383,5 +409,12 @@ function isSendOkCommandType(
   return (
     typeof value === 'string' &&
     (OUTBOUND_SEND_OK_COMMAND_TYPES as readonly string[]).includes(value)
+  );
+}
+
+function isStatus(value: unknown): value is OutboundStatus {
+  return (
+    typeof value === 'string' &&
+    (OUTBOUND_STATUS_VALUES as readonly string[]).includes(value)
   );
 }

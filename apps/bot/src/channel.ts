@@ -11,7 +11,7 @@ import {
 import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import type { CommandQueue } from './command-queue';
+import type { CommandDedup } from './command-dedup';
 import type { AcceptedInbound } from './map-update';
 
 /** Параметры bind и секрет канала (из env). */
@@ -35,15 +35,15 @@ const CLOSE_INVALID_WIRE = 1003;
 type LiveSocket = WebSocket & { isAlive: boolean };
 
 /**
- * WebSocket-слушатель: auth на upgrade, одно активное соединение,
- * inbound → клиент, outbound → очередь/дедуп → `execute` → result с тем же `id`.
+ * WebSocket-слушатель: auth на upgrade (только header), одно активное соединение,
+ * inbound → клиент (at-most-once), outbound → дедуп по `id` → `execute` → result.
  */
 export function createChannelServer(options: {
   config: ChannelConfig;
+  dedup: CommandDedup;
   execute: (command: OutboundCommand) => Promise<OutboundResult>;
-  queue: CommandQueue;
 }): ChannelServer {
-  const { config, execute, queue } = options;
+  const { config, dedup, execute } = options;
   let httpServer: HttpServer | null = null;
   let wss: null | WebSocketServer = null;
   let active: LiveSocket | null = null;
@@ -123,7 +123,7 @@ export function createChannelServer(options: {
     }
 
     try {
-      const result = await queue.run(decoded.id, () =>
+      const result = await dedup.run(decoded.id, () =>
         execute(decoded.command),
       );
       if (socket.readyState === WebSocket.OPEN) {
@@ -153,7 +153,7 @@ export function createChannelServer(options: {
       return;
     }
 
-    const token = findHandshakeToken(url, req.headers.authorization);
+    const token = findHandshakeToken(req.headers.authorization);
     if (token !== config.secret) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
@@ -211,13 +211,10 @@ export function createChannelServer(options: {
   }
 }
 
-/** Секрет из query `token` или `Authorization: Bearer …`. */
+/** Секрет только из `Authorization: Bearer …`. */
 export function findHandshakeToken(
-  url: URL,
   authorization: string | undefined,
 ): null | string {
-  const fromQuery = url.searchParams.get('token');
-  if (fromQuery !== null && fromQuery !== '') return fromQuery;
   if (authorization === undefined) return null;
   const match = /^Bearer\s+(\S+)$/i.exec(authorization.trim());
   return match?.[1] ?? null;

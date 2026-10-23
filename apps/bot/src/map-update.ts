@@ -37,10 +37,10 @@ export function mapTelegramUpdate(
   access: AccessFilter,
 ): MappedUpdate {
   if (update.callback_query) {
-    return mapCallback(update.update_id, update.callback_query, access);
+    return mapQuestionAnswer(update.update_id, update.callback_query, access);
   }
   if (update.message) {
-    return mapUserMessage(update.update_id, update.message, access);
+    return mapMessage(update.update_id, update.message, access);
   }
   return IGNORE;
 }
@@ -61,7 +61,35 @@ function findPlace(message: TelegramMessage): null | Place {
   };
 }
 
-function mapCallback(
+function mapMessage(
+  updateId: number,
+  message: TelegramMessage,
+  access: AccessFilter,
+): MappedUpdate {
+  if (message.from === undefined) return IGNORE;
+  if (message.text === undefined || message.text === '') return IGNORE;
+
+  const userId = String(message.from.id);
+  const chatId = String(message.chat.id);
+  if (!isAllowedSender(access, userId, chatId)) return IGNORE;
+
+  const place = findPlace(message);
+  if (!place) return IGNORE;
+
+  return {
+    answerCallbackQueryId: null,
+    inbound: {
+      event: {
+        place,
+        text: message.text,
+        type: 'message',
+      },
+      eventId: String(updateId),
+    },
+  };
+}
+
+function mapQuestionAnswer(
   updateId: number,
   query: TelegramCallbackQuery,
   access: AccessFilter,
@@ -93,35 +121,7 @@ function mapCallback(
         data: payload.data,
         place,
         requestId: payload.requestId,
-        type: 'callback',
-      },
-      eventId: String(updateId),
-    },
-  };
-}
-
-function mapUserMessage(
-  updateId: number,
-  message: TelegramMessage,
-  access: AccessFilter,
-): MappedUpdate {
-  if (message.from === undefined) return IGNORE;
-  if (message.text === undefined || message.text === '') return IGNORE;
-
-  const userId = String(message.from.id);
-  const chatId = String(message.chat.id);
-  if (!isAllowedSender(access, userId, chatId)) return IGNORE;
-
-  const place = findPlace(message);
-  if (!place) return IGNORE;
-
-  return {
-    answerCallbackQueryId: null,
-    inbound: {
-      event: {
-        place,
-        text: message.text,
-        type: 'user_message',
+        type: 'question_answer',
       },
       eventId: String(updateId),
     },

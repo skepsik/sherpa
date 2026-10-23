@@ -1,48 +1,48 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createCommandQueue } from './command-queue';
+import { createCommandDedup } from './command-dedup';
 
-void describe('createCommandQueue', () => {
-  void it('исполняет строго по очереди', async () => {
-    const queue = createCommandQueue();
+void describe('createCommandDedup', () => {
+  void it('разные id исполняются параллельно', async () => {
+    const dedup = createCommandDedup();
     const order: number[] = [];
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
 
-    const a = queue.run('a', async () => {
+    const a = dedup.run('a', async () => {
       await firstGate;
       order.push(1);
       return 1;
     });
-    const b = queue.run('b', async () => {
+    const b = dedup.run('b', async () => {
       order.push(2);
       return 2;
     });
 
     await delay(10);
-    assert.deepEqual(order, []);
+    assert.deepEqual(order, [2]);
     releaseFirst();
     assert.deepEqual(await Promise.all([a, b]), [1, 2]);
-    assert.deepEqual(order, [1, 2]);
+    assert.deepEqual(order, [2, 1]);
   });
 
   void it('повтор id в полёте и после — один run', async () => {
-    const queue = createCommandQueue(5_000);
+    const dedup = createCommandDedup(5_000);
     let calls = 0;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
 
-    const first = queue.run('x', async () => {
+    const first = dedup.run('x', async () => {
       calls += 1;
       await gate;
       return 'ok';
     });
-    const second = queue.run('x', async () => {
+    const second = dedup.run('x', async () => {
       calls += 1;
       return 'other';
     });
@@ -53,15 +53,15 @@ void describe('createCommandQueue', () => {
     assert.deepEqual(await Promise.all([first, second]), ['ok', 'ok']);
     assert.equal(calls, 1);
 
-    assert.equal(await queue.run('x', async () => 'new'), 'ok');
+    assert.equal(await dedup.run('x', async () => 'new'), 'ok');
     assert.equal(calls, 1);
   });
 
   void it('после TTL просроченный id вытесняется и run вызывается снова', async () => {
-    const queue = createCommandQueue(20);
+    const dedup = createCommandDedup(20);
     let calls = 0;
     assert.equal(
-      await queue.run('ttl', async () => {
+      await dedup.run('ttl', async () => {
         calls += 1;
         return 'first';
       }),
@@ -69,7 +69,7 @@ void describe('createCommandQueue', () => {
     );
     await delay(40);
     assert.equal(
-      await queue.run('ttl', async () => {
+      await dedup.run('ttl', async () => {
         calls += 1;
         return 'second';
       }),

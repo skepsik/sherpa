@@ -1,20 +1,19 @@
 /**
- * Глобальная очередь исходящих команд + дедуп по `id`.
- * Параллельный send/edit на одно Place запрещён упрощением MVP (очередь на весь бот).
+ * Дедуп исходящих команд по `id` (в полёте и в окне TTL после успеха).
+ * Сериализации между разными id нет.
  */
 
-export type CommandQueue = {
+export type CommandDedup = {
   /** Один проход `run` на `id`; повтор ждёт тот же исход без второго `run`. */
   run: <T>(id: string, run: () => Promise<T>) => Promise<T>;
 };
 
 const DEFAULT_DEDUP_TTL_MS = 60_000;
 
-/** Создаёт очередь: строго последовательно; окно дедупа — эфемерная память процесса. */
-export function createCommandQueue(
+/** Эфемерная память процесса; окно дедупа после успеха — `dedupTtlMs`. */
+export function createCommandDedup(
   dedupTtlMs: number = DEFAULT_DEDUP_TTL_MS,
-): CommandQueue {
-  let chain: Promise<unknown> = Promise.resolve();
+): CommandDedup {
   const inflight = new Map<string, Promise<unknown>>();
   const recent = new Map<string, { expiresAt: number; value: unknown }>();
 
@@ -31,7 +30,7 @@ export function createCommandQueue(
         return existing as Promise<Awaited<ReturnType<typeof run>>>;
       }
 
-      const task = enqueue(() => run()).then(
+      const task = run().then(
         (value) => {
           inflight.delete(id);
           recent.set(id, { expiresAt: Date.now() + dedupTtlMs, value });
@@ -46,15 +45,6 @@ export function createCommandQueue(
       return task;
     },
   };
-
-  function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    const next = chain.then(fn, fn);
-    chain = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  }
 }
 
 function pruneExpired(

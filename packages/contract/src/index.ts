@@ -3,12 +3,12 @@
 export { assertNever } from './assert';
 
 export type {
-  InboundCallback,
   InboundDecoded,
   InboundEnvelope,
   InboundEvent,
   InboundEventType,
-  InboundUserMessage,
+  InboundMessage,
+  InboundQuestionAnswer,
 } from './inbound';
 export {
   encodeInbound,
@@ -22,17 +22,20 @@ export type {
   OutboundCommandType,
   OutboundCreateTopic,
   OutboundCreateTopicOk,
-  OutboundEditText,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
+  OutboundQuestionOk,
+  OutboundResolveQuestion,
   OutboundResult,
   OutboundResultEnvelope,
   OutboundResultType,
-  OutboundSendButtons,
+  OutboundSendMessage,
   OutboundSendOk,
   OutboundSendOkCommandType,
-  OutboundSendText,
+  OutboundSendQuestion,
+  OutboundSetStatus,
+  OutboundStatus,
 } from './outbound';
 export {
   encodeOutbound,
@@ -41,6 +44,7 @@ export {
   OUTBOUND_ERROR_CODES,
   OUTBOUND_RESULT_TYPES,
   OUTBOUND_SEND_OK_COMMAND_TYPES,
+  OUTBOUND_STATUS_VALUES,
   tryDecodeOutbound,
   tryDecodeOutboundResult,
 } from './outbound';

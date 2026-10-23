@@ -2,14 +2,15 @@ import type {
   OutboundCommand,
   OutboundCommandType,
   OutboundCreateTopic,
-  OutboundEditText,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
+  OutboundResolveQuestion,
   OutboundResult,
-  OutboundSendButtons,
+  OutboundSendMessage,
   OutboundSendOkCommandType,
-  OutboundSendText,
+  OutboundSendQuestion,
+  OutboundSetStatus,
   Place,
 } from '@sherpa/contract';
 import type { Api } from 'grammy';
@@ -44,12 +45,14 @@ export async function executeOutbound(
   switch (command.type) {
     case 'create_topic':
       return executeCreateTopic(api, command);
-    case 'edit_text':
-      return executeEditText(api, command);
-    case 'send_buttons':
-      return executeSendButtons(api, command);
-    case 'send_text':
-      return executeSendText(api, command);
+    case 'resolve_question':
+      return executeResolveQuestion(api, command);
+    case 'send_message':
+      return executeSendMessage(api, command);
+    case 'send_question':
+      return executeSendQuestion(api, command);
+    case 'set_status':
+      return executeSetStatus(command);
     default:
       return assertNever(command);
   }
@@ -93,59 +96,74 @@ async function executeCreateTopic(
   }
 }
 
-async function executeEditText(
+async function executeResolveQuestion(
   api: OutboundApi,
-  command: OutboundEditText,
+  command: OutboundResolveQuestion,
 ): Promise<OutboundResult> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
-      'edit_text',
+      'resolve_question',
       'text exceeds Telegram limit of 4096 characters',
     );
   }
 
-  const markup = findEditReplyMarkup(command);
-  if (markup === 'pack_failed') {
-    return rejected('edit_text', 'callback_data exceeds 64 bytes');
-  }
-  if (markup === 'missing_request_id') {
-    return rejected('edit_text', 'requestId required when replacing buttons');
-  }
-
   try {
-    const edited = await callWithRateLimitRetry(() =>
+    await callWithRateLimitRetry(() =>
       api.editMessageText(
         command.place.chatId,
         Number(command.messageId),
         command.text,
-        markup === undefined ? undefined : { reply_markup: markup },
+        { reply_markup: { inline_keyboard: [] } },
       ),
     );
-    const messageId =
-      edited === true ? command.messageId : String(edited.message_id);
-    return sendOk('edit_text', messageId);
+    return sendOk('resolve_question');
   } catch (error) {
     if (isMessageNotModified(error)) {
-      return sendOk('edit_text', command.messageId);
+      return sendOk('resolve_question');
     }
-    return mapApiError(error, 'edit_text');
+    return mapApiError(error, 'resolve_question');
   }
 }
 
-async function executeSendButtons(
+async function executeSendMessage(
   api: OutboundApi,
-  command: OutboundSendButtons,
+  command: OutboundSendMessage,
 ): Promise<OutboundResult> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
-      'send_buttons',
+      'send_message',
+      'text exceeds Telegram limit of 4096 characters',
+    );
+  }
+
+  try {
+    await callWithRateLimitRetry(() =>
+      api.sendMessage(
+        command.place.chatId,
+        command.text,
+        threadOptions(command.place),
+      ),
+    );
+    return sendOk('send_message');
+  } catch (error) {
+    return mapApiError(error, 'send_message');
+  }
+}
+
+async function executeSendQuestion(
+  api: OutboundApi,
+  command: OutboundSendQuestion,
+): Promise<OutboundResult> {
+  if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
+    return rejected(
+      'send_question',
       'text exceeds Telegram limit of 4096 characters',
     );
   }
 
   const keyboard = tryBuildInlineKeyboard(command.requestId, command.buttons);
   if (keyboard === null) {
-    return rejected('send_buttons', 'callback_data exceeds 64 bytes');
+    return rejected('send_question', 'callback_data exceeds 64 bytes');
   }
 
   try {
@@ -155,60 +173,19 @@ async function executeSendButtons(
         reply_markup: { inline_keyboard: keyboard },
       }),
     );
-    return sendOk('send_buttons', String(message.message_id));
+    return {
+      commandType: 'send_question',
+      messageId: String(message.message_id),
+      type: 'question_ok',
+    };
   } catch (error) {
-    return mapApiError(error, 'send_buttons');
+    return mapApiError(error, 'send_question');
   }
 }
 
-async function executeSendText(
-  api: OutboundApi,
-  command: OutboundSendText,
-): Promise<OutboundResult> {
-  if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
-    return rejected(
-      'send_text',
-      'text exceeds Telegram limit of 4096 characters',
-    );
-  }
-
-  try {
-    const message = await callWithRateLimitRetry(() =>
-      api.sendMessage(
-        command.place.chatId,
-        command.text,
-        threadOptions(command.place),
-      ),
-    );
-    return sendOk('send_text', String(message.message_id));
-  } catch (error) {
-    return mapApiError(error, 'send_text');
-  }
-}
-
-/**
- * `undefined` — markup не трогать;
- * объект — заменить (пустой keyboard = убрать кнопки);
- * `pack_failed` / `missing_request_id` — отказ до API.
- */
-function findEditReplyMarkup(
-  command: OutboundEditText,
-):
-  | 'missing_request_id'
-  | 'pack_failed'
-  | undefined
-  | { inline_keyboard: InlineKeyboard } {
-  if (command.buttons === undefined) return undefined;
-  if (command.buttons.length === 0) {
-    return { inline_keyboard: [] };
-  }
-  const requestId = command.requestId;
-  if (requestId === undefined || requestId === '') {
-    return 'missing_request_id';
-  }
-  const keyboard = tryBuildInlineKeyboard(requestId, command.buttons);
-  if (keyboard === null) return 'pack_failed';
-  return { inline_keyboard: keyboard };
+function executeSetStatus(command: OutboundSetStatus): OutboundResult {
+  void command;
+  return sendOk('set_status');
 }
 
 function isMessageNotModified(error: unknown) {
@@ -265,11 +242,8 @@ function resolveOutboundErrorCode(
   return 'send_failed';
 }
 
-function sendOk(
-  commandType: OutboundSendOkCommandType,
-  messageId: string,
-): OutboundResult {
-  return { commandType, messageId, type: 'send_ok' };
+function sendOk(commandType: OutboundSendOkCommandType): OutboundResult {
+  return { commandType, type: 'send_ok' };
 }
 
 function sleep(ms: number) {

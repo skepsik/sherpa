@@ -14,7 +14,7 @@ const access: AccessFilter = {
 };
 
 void describe('mapTelegramUpdate', () => {
-  void it('текст в личке → user_message + eventId; encodeInbound ок', () => {
+  void it('текст в личке → message + eventId; encodeInbound ок', () => {
     const update: TelegramUpdate = {
       message: {
         chat: { id: 100, type: 'private' },
@@ -29,7 +29,7 @@ void describe('mapTelegramUpdate', () => {
       event: {
         place: { chatId: '100', kind: 'direct' },
         text: 'привет',
-        type: 'user_message',
+        type: 'message',
       },
       eventId: '7',
     });
@@ -58,7 +58,7 @@ void describe('mapTelegramUpdate', () => {
     });
   });
 
-  void it('callback с валидным pack → callback + answer id', () => {
+  void it('callback с валидным pack → question_answer + answer id', () => {
     const packed = tryPackCallbackData('req-1', 'yes');
     assert.ok(packed);
     const update: TelegramUpdate = {
@@ -80,7 +80,7 @@ void describe('mapTelegramUpdate', () => {
         data: 'yes',
         place: { chatId: '100', kind: 'direct' },
         requestId: 'req-1',
-        type: 'callback',
+        type: 'question_answer',
       },
       eventId: '11',
     });

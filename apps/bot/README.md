@@ -20,11 +20,13 @@
 
 Бот **слушает**; раннер — исходящий клиент.
 
-- URL (локально): `ws://<host>:<port><path>?token=<SHERPA_CHANNEL_SECRET>`
-- Альтернатива секрету: заголовок `Authorization: Bearer <SHERPA_CHANNEL_SECRET>` на HTTP upgrade.
+- URL (локально): `ws://<host>:<port><path>`
+- Секрет рукопожатия — **только** заголовок `Authorization: Bearer <SHERPA_CHANNEL_SECRET>` на HTTP upgrade. Query-параметр не принимается.
 - Без верного секрета — HTTP `401`, upgrade не завершается, обмена envelope нет.
 - Одно активное соединение: новое успешное рукопожатие вытесняет старое.
 - Кадр: одно текстовое JSON-сообщение = один envelope `@sherpa/contract` (`encodeInbound` / `encodeOutbound` / `encodeOutboundResult`).
+- Inbound: **at-most-once** (один send без ack). Обрыв / полумёртвый сокет — heartbeat; «раннер недоступен» — только когда клиента нет. Кадр, уже ушедший в мёртвый сокет, не переигрывается.
+- Outbound: дедуп по `id` команды (повтор в полёте и после — один execute). Очереди исполнения нет; порядок в `Place` обеспечивает раннер (см. `@sherpa/contract`).
 
 ### TLS / WSS
 
@@ -32,7 +34,7 @@
 
 ### Пример обмена
 
-1. Раннер подключается с секретом.
+1. Раннер подключается с `Authorization: Bearer …`.
 2. Бот шлёт inbound (после сообщения пользователя):
 
 ```json
@@ -41,7 +43,7 @@
   "direction": "inbound",
   "eventId": "42",
   "event": {
-    "type": "user_message",
+    "type": "message",
     "place": { "kind": "direct", "chatId": "123" },
     "text": "привет"
   }
@@ -56,7 +58,7 @@
   "direction": "outbound",
   "id": "cmd-1",
   "command": {
-    "type": "send_text",
+    "type": "send_message",
     "place": { "kind": "direct", "chatId": "123" },
     "text": "ок"
   }
@@ -70,11 +72,11 @@
   "v": 1,
   "direction": "outbound",
   "id": "cmd-1",
-  "result": { "type": "send_ok", "commandType": "send_text", "messageId": "99" }
+  "result": { "type": "send_ok", "commandType": "send_message" }
 }
 ```
 
-Нет раннера / канал упал: inbound не буферизуется; бот сам пишет в тот же Place: «Раннер недоступен. Попробуй позже.» (и для текста, и для callback после локального `answerCallbackQuery`).
+Нет раннера / канал упал: inbound не буферизуется; бот сам пишет в тот же Place: «Раннер недоступен. Попробуй позже.» (и для текста, и для `question_answer` после локального `answerCallbackQuery`).
 
 Heartbeat: серверный WebSocket ping ~30 с; молчание → terminate.
 
@@ -92,9 +94,9 @@ npm run dev:bot
 
 1. Бот добавлен в супергруппу с топиками (forum); у бота есть право создавать топики.
 2. В `.env`: `TELEGRAM_USER_ID`, `TELEGRAM_ALLOWED_CHAT_IDS` (личка и/или супергруппа).
-3. Поднять бот; подключить тестовый WS-клиент с секретом (или раннер, когда будет).
+3. Поднять бот; подключить тестовый WS-клиент с `Authorization: Bearer …` (или раннер, когда будет).
 4. Личка: текст → inbound на канале; без клиента — «Раннер недоступен».
-5. Топик: то же для текста и для callback (кнопка).
-6. С канала глазами: `send_text`, `send_buttons`, `create_topic`, `edit_text` (в т.ч. снять/заменить кнопки).
+5. Топик: то же для текста и для `question_answer` (кнопка).
+6. С канала глазами: `send_message`, `send_question`, `resolve_question`, `set_status` (заглушка), `create_topic`.
 7. Повтор команды с тем же `id` — без второго сообщения в чат.
 8. Второй WS-клиент вытесняет первый.
