@@ -17,7 +17,7 @@
     "lint": "eslint .",
     "format": "prettier --write . && eslint . --fix",
     "format:check": "prettier --check .",
-    "test": "npm test -w @sherpa/contract",
+    "test": "npm test -w @sherpa/contract && npm test -w @sherpa/bot",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "lint-staged": "lint-staged",
     "dev:bot": "npm run dev -w @sherpa/bot",
