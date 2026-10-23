@@ -2,14 +2,17 @@ import type { Place, TopicPlace } from './place';
 import type { WireDirection } from './wire';
 
 import { findPlace } from './place';
-import { WIRE_VERSION } from './wire';
+import { isRecord, WIRE_VERSION } from './wire';
 
 /**
  * Команда раннер → транспорт.
  * Нет project / access / cwd — маршрутизацию решает раннер.
  */
 export type OutboundCommand =
-  OutboundCreateTopic | OutboundSendButtons | OutboundSendText;
+  | OutboundCreateTopic
+  | OutboundEditText
+  | OutboundSendButtons
+  | OutboundSendText;
 
 /** Envelope команды на проводе. */
 export type OutboundCommandEnvelope = {
@@ -32,6 +35,19 @@ export type OutboundCreateTopic = {
 export type OutboundCreateTopicOk = {
   place: TopicPlace;
   type: 'create_topic_ok';
+};
+
+/**
+ * Редактировать уже отправленное сообщение (стрим в топик / снять кнопки).
+ * `buttons` отсутствует — разметку не трогать; `[]` — убрать inline-кнопки.
+ */
+export type OutboundEditText = {
+  /** Если задано (в т.ч. `[]`) — заменить reply markup. */
+  buttons?: OutboundInlineButton[];
+  messageId: string;
+  place: Place;
+  text: string;
+  type: 'edit_text';
 };
 
 /**
@@ -83,9 +99,11 @@ export type OutboundSendButtons = {
   type: 'send_buttons';
 };
 
-/** Успешная отправка текста или кнопок. */
+/** Успешная отправка или правка текста/кнопок. */
 export type OutboundSendOk = {
-  commandType: 'send_buttons' | 'send_text';
+  commandType: 'edit_text' | 'send_buttons' | 'send_text';
+  /** Id сообщения в транспорте (для последующего edit_text). */
+  messageId: string;
   type: 'send_ok';
 };
 
@@ -146,7 +164,7 @@ export function tryDecodeOutboundResult(
 }
 
 function findButtons(value: unknown): null | OutboundInlineButton[] {
-  if (!Array.isArray(value) || value.length === 0) return null;
+  if (!Array.isArray(value)) return null;
   const buttons: OutboundInlineButton[] = [];
   for (const item of value) {
     if (!isRecord(item)) return null;
@@ -161,6 +179,7 @@ function findCommand(value: unknown): null | OutboundCommand {
   if (!isRecord(value)) return null;
   if (value.type === 'send_text') return findSendText(value);
   if (value.type === 'send_buttons') return findSendButtons(value);
+  if (value.type === 'edit_text') return findEditText(value);
   if (value.type === 'create_topic') return findCreateTopic(value);
   return null;
 }
@@ -181,6 +200,32 @@ function findCreateTopicOk(
   const place = findPlace(value.place);
   if (!place || place.kind !== 'topic') return null;
   return { place, type: 'create_topic_ok' };
+}
+
+function findEditText(value: Record<string, unknown>): null | OutboundEditText {
+  const place = findPlace(value.place);
+  if (!place) return null;
+  if (typeof value.messageId !== 'string' || value.messageId.length === 0) {
+    return null;
+  }
+  if (typeof value.text !== 'string' || value.text.length === 0) return null;
+  if (value.buttons === undefined) {
+    return {
+      messageId: value.messageId,
+      place,
+      text: value.text,
+      type: 'edit_text',
+    };
+  }
+  const buttons = findButtons(value.buttons);
+  if (!buttons) return null;
+  return {
+    buttons,
+    messageId: value.messageId,
+    place,
+    text: value.text,
+    type: 'edit_text',
+  };
 }
 
 function findError(value: Record<string, unknown>): null | OutboundError {
@@ -241,7 +286,7 @@ function findSendButtons(
     return null;
   }
   const buttons = findButtons(value.buttons);
-  if (!buttons) return null;
+  if (!buttons || buttons.length === 0) return null;
   return {
     buttons,
     place,
@@ -254,11 +299,19 @@ function findSendButtons(
 function findSendOk(value: Record<string, unknown>): null | OutboundSendOk {
   if (
     value.commandType !== 'send_text' &&
-    value.commandType !== 'send_buttons'
+    value.commandType !== 'send_buttons' &&
+    value.commandType !== 'edit_text'
   ) {
     return null;
   }
-  return { commandType: value.commandType, type: 'send_ok' };
+  if (typeof value.messageId !== 'string' || value.messageId.length === 0) {
+    return null;
+  }
+  return {
+    commandType: value.commandType,
+    messageId: value.messageId,
+    type: 'send_ok',
+  };
 }
 
 function findSendText(value: Record<string, unknown>): null | OutboundSendText {
@@ -272,6 +325,7 @@ function isCommandType(value: unknown): value is OutboundCommand['type'] {
   return (
     value === 'send_text' ||
     value === 'send_buttons' ||
+    value === 'edit_text' ||
     value === 'create_topic'
   );
 }
@@ -283,8 +337,4 @@ function isErrorCode(value: unknown): value is OutboundErrorCode {
     value === 'place_unavailable' ||
     value === 'transport_rejected'
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

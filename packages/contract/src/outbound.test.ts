@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 import type {
   OutboundCreateTopic,
   OutboundCreateTopicOk,
+  OutboundEditText,
   OutboundError,
+  OutboundErrorCode,
   OutboundSendButtons,
   OutboundSendOk,
   OutboundSendText,
@@ -103,20 +105,60 @@ void describe('outbound encode/decode', () => {
     );
   });
 
-  void it('roundtrip отказ транспорта', () => {
-    const result: OutboundError = {
+  void it('roundtrip edit_text (правка и снятие кнопок)', () => {
+    const edit: OutboundEditText = {
+      buttons: [],
+      messageId: 'msg-9',
+      place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
+      text: 'обновлено',
+      type: 'edit_text',
+    };
+    assert.deepEqual(tryDecodeOutbound(encodeOutbound('c-edit', edit)), {
+      command: edit,
+      id: 'c-edit',
+    });
+    const editTextOnly: OutboundEditText = {
+      messageId: 'msg-9',
+      place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
+      text: 'только текст',
+      type: 'edit_text',
+    };
+    assert.deepEqual(
+      tryDecodeOutbound(encodeOutbound('c-edit2', editTextOnly)),
+      { command: editTextOnly, id: 'c-edit2' },
+    );
+  });
+
+  void it('roundtrip отказ транспорта — все OutboundErrorCode', () => {
+    const codes: OutboundErrorCode[] = [
+      'create_topic_failed',
+      'place_unavailable',
+      'send_failed',
+      'transport_rejected',
+    ];
+    for (const code of codes) {
+      const result: OutboundError = { code, type: 'error' };
+      assert.deepEqual(
+        tryDecodeOutboundResult(encodeOutboundResult(`err-${code}`, result)),
+        { id: `err-${code}`, result },
+      );
+    }
+    const withMeta: OutboundError = {
       code: 'create_topic_failed',
       commandType: 'create_topic',
       message: 'forum topics disabled',
       type: 'error',
     };
-    const decoded = tryDecodeOutboundResult(encodeOutboundResult('c4', result));
-    assert.deepEqual(decoded, { id: 'c4', result });
+    assert.deepEqual(
+      tryDecodeOutboundResult(encodeOutboundResult('c4', withMeta)),
+      { id: 'c4', result: withMeta },
+    );
   });
 
-  void it('roundtrip send_ok', () => {
+  void it('roundtrip send_ok с messageId', () => {
     const sendTextOk: OutboundSendOk = {
       commandType: 'send_text',
+      messageId: 'm-text',
       type: 'send_ok',
     };
     assert.deepEqual(
@@ -125,11 +167,27 @@ void describe('outbound encode/decode', () => {
     );
     const sendButtonsOk: OutboundSendOk = {
       commandType: 'send_buttons',
+      messageId: 'm-btn',
       type: 'send_ok',
     };
     assert.deepEqual(
       tryDecodeOutboundResult(encodeOutboundResult('c6', sendButtonsOk)),
       { id: 'c6', result: sendButtonsOk },
+    );
+    const editOk: OutboundSendOk = {
+      commandType: 'edit_text',
+      messageId: 'm-edit',
+      type: 'send_ok',
+    };
+    assert.deepEqual(
+      tryDecodeOutboundResult(encodeOutboundResult('c7', editOk)),
+      { id: 'c7', result: editOk },
+    );
+    assert.equal(
+      tryDecodeOutboundResult(
+        outboundResultWire({ commandType: 'send_text', type: 'send_ok' }),
+      ),
+      null,
     );
   });
 

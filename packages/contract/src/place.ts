@@ -1,3 +1,5 @@
+import { isRecord } from './wire';
+
 /**
  * Место разговора на границе транспорт ↔ раннер.
  * Роли: личка (привратник) / топик (агент проекта). Идентификаторы opaque для транспорта.
@@ -32,8 +34,4 @@ export function isDirectPlace(
 
 export function isTopicPlace(place: Place): place is TopicPlace {
   return place.kind === 'topic';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

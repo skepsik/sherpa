@@ -2,7 +2,7 @@ import type { Place } from './place';
 import type { WireDirection } from './wire';
 
 import { findPlace } from './place';
-import { WIRE_VERSION } from './wire';
+import { isRecord, WIRE_VERSION } from './wire';
 
 /**
  * Нажатие inline-кнопки.
@@ -91,8 +91,4 @@ function findUserMessage(
   if (value.text === undefined) return { place, type: 'user_message' };
   if (typeof value.text !== 'string') return null;
   return { place, text: value.text, type: 'user_message' };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

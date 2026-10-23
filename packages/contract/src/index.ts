@@ -13,6 +13,7 @@ export type {
   OutboundCommandEnvelope,
   OutboundCreateTopic,
   OutboundCreateTopicOk,
+  OutboundEditText,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
