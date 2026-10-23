@@ -11,6 +11,10 @@
   "dependencies": {
     "@sherpa/contract": "*",
     "dotenv": "^18.0.9",
-    "grammy": "^1.46.0"
+    "grammy": "^1.46.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
   }
 }

@@ -1,11 +1,17 @@
 import type { AccessFilter } from './access';
+import type { ChannelConfig } from './channel';
 
 export type BotConfig = {
   access: AccessFilter;
+  channel: ChannelConfig;
   token: string;
 };
 
-/** Читает токен и фильтр доступа из env; промах обязательных ключей → throw. */
+const DEFAULT_CHANNEL_HOST = '127.0.0.1';
+const DEFAULT_CHANNEL_PATH = '/v1/channel';
+const DEFAULT_CHANNEL_PORT = 8787;
+
+/** Читает токен, фильтр доступа и канал из env; промах обязательных ключей → throw. */
 export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
   const token = requireEnv(env, 'TELEGRAM_BOT_TOKEN');
   const userId = requireEnv(env, 'TELEGRAM_USER_ID');
@@ -16,8 +22,30 @@ export function loadBotConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
   }
   return {
     access: { allowedChatIds, userId },
+    channel: loadChannelConfig(env),
     token,
   };
+}
+
+/** Host/port/path/секрет канала; секрет обязателен. */
+export function loadChannelConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): ChannelConfig {
+  const secret = requireEnv(env, 'SHERPA_CHANNEL_SECRET');
+  const host = env.SHERPA_CHANNEL_HOST?.trim() || DEFAULT_CHANNEL_HOST;
+  const path = env.SHERPA_CHANNEL_PATH?.trim() || DEFAULT_CHANNEL_PATH;
+  const portRaw = env.SHERPA_CHANNEL_PORT?.trim();
+  const port =
+    portRaw === undefined || portRaw === ''
+      ? DEFAULT_CHANNEL_PORT
+      : Number(portRaw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('SHERPA_CHANNEL_PORT: нужен порт 1–65535');
+  }
+  if (!path.startsWith('/')) {
+    throw new Error('SHERPA_CHANNEL_PATH: путь должен начинаться с /');
+  }
+  return { host, path, port, secret };
 }
 
 function parseAllowedChatIds(raw: string): Set<string> {
