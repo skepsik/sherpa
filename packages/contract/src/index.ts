@@ -8,7 +8,28 @@ export type {
 } from './inbound';
 export { encodeInbound, tryDecodeInbound } from './inbound';
 
-export type { Place } from './place';
+export type {
+  OutboundCommand,
+  OutboundCommandEnvelope,
+  OutboundCreateTopic,
+  OutboundCreateTopicOk,
+  OutboundError,
+  OutboundErrorCode,
+  OutboundInlineButton,
+  OutboundResult,
+  OutboundResultEnvelope,
+  OutboundSendButtons,
+  OutboundSendOk,
+  OutboundSendText,
+} from './outbound';
+export {
+  encodeOutbound,
+  encodeOutboundResult,
+  tryDecodeOutbound,
+  tryDecodeOutboundResult,
+} from './outbound';
+
+export type { Place, TopicPlace } from './place';
 export { isDirectPlace, isTopicPlace } from './place';
 
 export type { WireDirection } from './wire';
