@@ -35,25 +35,16 @@ export type OutboundApi = Pick<
   'createForumTopic' | 'editMessageText' | 'sendMessage'
 >;
 
-/**
- * Исход исполнения + признак для дедупа по `id`:
- * кэшировать успех и неопределённый отказ; определённый — нет.
- */
-export type OutboundExecution = {
-  cacheable: boolean;
-  result: OutboundResult;
-};
-
 type InlineKeyboard = { callback_data: string; text: string }[][];
 
 /** Короткий fallback, если у отказа нет описания. */
 const UNKNOWN_ERROR_MESSAGE = 'unknown error';
 
-/** Команда контракта → исход после вызова Telegram (+ cacheable для дедупа). */
+/** Команда контракта → исход после вызова Telegram. */
 export async function executeOutbound(
   api: OutboundApi,
   command: OutboundCommand,
-): Promise<OutboundExecution> {
+): Promise<OutboundResult> {
   switch (command.type) {
     case 'create_topic':
       return executeCreateTopic(api, command);
@@ -90,19 +81,19 @@ async function callWithRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
 async function executeCreateTopic(
   api: OutboundApi,
   command: OutboundCreateTopic,
-): Promise<OutboundExecution> {
+): Promise<OutboundResult> {
   try {
     const topic = await callWithRateLimitRetry(() =>
       api.createForumTopic(command.chatId, command.title),
     );
-    return ok({
+    return {
       place: {
         chatId: command.chatId,
         kind: 'topic',
         topicId: String(topic.message_thread_id),
       },
       type: 'create_topic_ok',
-    });
+    };
   } catch (error) {
     return mapApiError(error, 'create_topic');
   }
@@ -111,7 +102,7 @@ async function executeCreateTopic(
 async function executeResolveQuestion(
   api: OutboundApi,
   command: OutboundResolveQuestion,
-): Promise<OutboundExecution> {
+): Promise<OutboundResult> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'resolve_question',
@@ -128,10 +119,10 @@ async function executeResolveQuestion(
         { reply_markup: { inline_keyboard: [] } },
       ),
     );
-    return ok(sendOk('resolve_question'));
+    return sendOk('resolve_question');
   } catch (error) {
     if (isMessageNotModified(error)) {
-      return ok(sendOk('resolve_question'));
+      return sendOk('resolve_question');
     }
     return mapApiError(error, 'resolve_question');
   }
@@ -140,7 +131,7 @@ async function executeResolveQuestion(
 async function executeSendMessage(
   api: OutboundApi,
   command: OutboundSendMessage,
-): Promise<OutboundExecution> {
+): Promise<OutboundResult> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'send_message',
@@ -156,7 +147,7 @@ async function executeSendMessage(
         threadOptions(command.place),
       ),
     );
-    return ok(sendOk('send_message'));
+    return sendOk('send_message');
   } catch (error) {
     return mapApiError(error, 'send_message');
   }
@@ -165,7 +156,7 @@ async function executeSendMessage(
 async function executeSendQuestion(
   api: OutboundApi,
   command: OutboundSendQuestion,
-): Promise<OutboundExecution> {
+): Promise<OutboundResult> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'send_question',
@@ -185,24 +176,19 @@ async function executeSendQuestion(
         reply_markup: { inline_keyboard: keyboard },
       }),
     );
-    return ok({
+    return {
       commandType: 'send_question',
       messageId: String(message.message_id),
       type: 'question_ok',
-    });
+    };
   } catch (error) {
     return mapApiError(error, 'send_question');
   }
 }
 
-function executeSetStatus(command: OutboundSetStatus): OutboundExecution {
+function executeSetStatus(command: OutboundSetStatus): OutboundResult {
   void command;
-  return ok(sendOk('set_status'));
-}
-
-/** Определённый отказ API: GrammyError с `error_code < 500`. */
-function isDefiniteApiFailure(error: unknown) {
-  return error instanceof GrammyError && error.error_code < 500;
+  return sendOk('set_status');
 }
 
 function isMessageNotModified(error: unknown) {
@@ -228,33 +214,24 @@ function isPlaceUnavailable(error: unknown) {
 function mapApiError(
   error: unknown,
   commandType: OutboundCommandType,
-): OutboundExecution {
-  const code = resolveOutboundErrorCode(error, commandType);
-  const result: OutboundError = {
-    code,
+): OutboundError {
+  return {
+    code: resolveOutboundErrorCode(error, commandType),
     commandType,
     message: resolveErrorMessage(error),
     type: 'error',
   };
-  return { cacheable: !isDefiniteApiFailure(error), result };
-}
-
-function ok(result: OutboundResult): OutboundExecution {
-  return { cacheable: true, result };
 }
 
 function rejected(
   commandType: OutboundCommandType,
   message: string,
-): OutboundExecution {
+): OutboundError {
   return {
-    cacheable: false,
-    result: {
-      code: 'transport_rejected',
-      commandType,
-      message,
-      type: 'error',
-    },
+    code: 'transport_rejected',
+    commandType,
+    message,
+    type: 'error',
   };
 }
 

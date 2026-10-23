@@ -1,4 +1,4 @@
-import type { OutboundCommand } from '@sherpa/contract';
+import type { OutboundCommand, OutboundResult } from '@sherpa/contract';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { RawData } from 'ws';
@@ -12,9 +12,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import type { CommandDedup } from './command-dedup';
 import type { AcceptedInbound } from './map-update';
-import type { OutboundExecution } from './outbound';
 
 /** Параметры bind и секрет канала (из env). */
 export type ChannelConfig = {
@@ -38,14 +36,13 @@ type LiveSocket = WebSocket & { isAlive: boolean };
 
 /**
  * WebSocket-слушатель: auth на upgrade (только header), одно активное соединение,
- * inbound → клиент (at-most-once), outbound → дедуп по `id` → `execute` → result.
+ * inbound → клиент (at-most-once), outbound → `execute` → result.
  */
 export function createChannelServer(options: {
   config: ChannelConfig;
-  dedup: CommandDedup;
-  execute: (command: OutboundCommand) => Promise<OutboundExecution>;
+  execute: (command: OutboundCommand) => Promise<OutboundResult>;
 }): ChannelServer {
-  const { config, dedup, execute } = options;
+  const { config, execute } = options;
   let httpServer: HttpServer | null = null;
   let wss: null | WebSocketServer = null;
   let active: LiveSocket | null = null;
@@ -125,10 +122,7 @@ export function createChannelServer(options: {
     }
 
     try {
-      const result = await dedup.run(decoded.id, async () => {
-        const outcome = await execute(decoded.command);
-        return { cacheable: outcome.cacheable, value: outcome.result };
-      });
+      const result = await execute(decoded.command);
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(encodeOutboundResult(decoded.id, result));
       }

@@ -67,11 +67,8 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        commandType: 'send_message',
-        type: 'send_ok',
-      },
+      commandType: 'send_message',
+      type: 'send_ok',
     });
     assert.deepEqual(captured, {
       chatId: '100',
@@ -104,7 +101,7 @@ void describe('executeOutbound', () => {
     });
   });
 
-  void it('текст длиннее 4096 → transport_rejected, не cacheable', async () => {
+  void it('текст длиннее 4096 → transport_rejected', async () => {
     let called = false;
     const api = mockApi({
       sendMessage: async () => {
@@ -123,13 +120,10 @@ void describe('executeOutbound', () => {
 
     assert.equal(called, false);
     assert.deepEqual(execution, {
-      cacheable: false,
-      result: {
-        code: 'transport_rejected',
-        commandType: 'send_message',
-        message: 'text exceeds Telegram limit of 4096 characters',
-        type: 'error',
-      },
+      code: 'transport_rejected',
+      commandType: 'send_message',
+      message: 'text exceeds Telegram limit of 4096 characters',
+      type: 'error',
     });
   });
 
@@ -151,13 +145,10 @@ void describe('executeOutbound', () => {
 
     assert.equal(called, false);
     assert.deepEqual(execution, {
-      cacheable: false,
-      result: {
-        code: 'transport_rejected',
-        commandType: 'resolve_question',
-        message: 'text exceeds Telegram limit of 4096 characters',
-        type: 'error',
-      },
+      code: 'transport_rejected',
+      commandType: 'resolve_question',
+      message: 'text exceeds Telegram limit of 4096 characters',
+      type: 'error',
     });
   });
 
@@ -184,12 +175,9 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        commandType: 'send_question',
-        messageId: '9',
-        type: 'question_ok',
-      },
+      commandType: 'send_question',
+      messageId: '9',
+      type: 'question_ok',
     });
     assert.ok(keyboard && typeof keyboard === 'object');
     const rows = (
@@ -226,11 +214,10 @@ void describe('executeOutbound', () => {
     });
 
     assert.equal(called, false);
-    assert.equal(execution.cacheable, false);
-    assert.equal(execution.result.type, 'error');
-    if (execution.result.type === 'error') {
-      assert.equal(execution.result.code, 'transport_rejected');
-      assert.ok(execution.result.message.length > 0);
+    assert.equal(execution.type, 'error');
+    if (execution.type === 'error') {
+      assert.equal(execution.code, 'transport_rejected');
+      assert.ok(execution.message.length > 0);
     }
   });
 
@@ -253,11 +240,8 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        commandType: 'resolve_question',
-        type: 'send_ok',
-      },
+      commandType: 'resolve_question',
+      type: 'send_ok',
     });
     assert.deepEqual(captured, {
       chatId: '3',
@@ -282,11 +266,8 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        commandType: 'resolve_question',
-        type: 'send_ok',
-      },
+      commandType: 'resolve_question',
+      type: 'send_ok',
     });
   });
 
@@ -312,11 +293,8 @@ void describe('executeOutbound', () => {
         type: 'set_status',
       });
       assert.deepEqual(execution, {
-        cacheable: true,
-        result: {
-          commandType: 'set_status',
-          type: 'send_ok',
-        },
+        commandType: 'set_status',
+        type: 'send_ok',
       });
     }
     assert.equal(called, false);
@@ -346,15 +324,12 @@ void describe('executeOutbound', () => {
 
     assert.equal(calls, 2);
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        commandType: 'send_message',
-        type: 'send_ok',
-      },
+      commandType: 'send_message',
+      type: 'send_ok',
     });
   });
 
-  void it('429 исчерпан → send_failed, не cacheable (error_code < 500)', async () => {
+  void it('429 исчерпан → send_failed', async () => {
     let calls = 0;
     const api = mockApi({
       sendMessage: async () => {
@@ -373,17 +348,14 @@ void describe('executeOutbound', () => {
 
     assert.equal(calls, RATE_LIMIT_MAX_ATTEMPTS);
     assert.deepEqual(execution, {
-      cacheable: false,
-      result: {
-        code: 'send_failed',
-        commandType: 'send_message',
-        message: 'Too Many Requests: retry after 0',
-        type: 'error',
-      },
+      code: 'send_failed',
+      commandType: 'send_message',
+      message: 'Too Many Requests: retry after 0',
+      type: 'error',
     });
   });
 
-  void it('сеть / не-GrammyError → send_failed, cacheable', async () => {
+  void it('сеть / не-GrammyError → send_failed', async () => {
     const api = mockApi({
       sendMessage: async () => {
         throw new Error('socket hang up');
@@ -397,17 +369,14 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        code: 'send_failed',
-        commandType: 'send_message',
-        message: 'socket hang up',
-        type: 'error',
-      },
+      code: 'send_failed',
+      commandType: 'send_message',
+      message: 'socket hang up',
+      type: 'error',
     });
   });
 
-  void it('GrammyError 500 → send_failed, cacheable', async () => {
+  void it('GrammyError 500 → send_failed', async () => {
     const api = mockApi({
       sendMessage: async () => {
         throw grammyError(500, 'Internal Server Error');
@@ -421,13 +390,10 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        code: 'send_failed',
-        commandType: 'send_message',
-        message: 'Internal Server Error',
-        type: 'error',
-      },
+      code: 'send_failed',
+      commandType: 'send_message',
+      message: 'Internal Server Error',
+      type: 'error',
     });
   });
 
@@ -444,11 +410,10 @@ void describe('executeOutbound', () => {
       type: 'send_message',
     });
 
-    assert.equal(execution.result.type, 'error');
-    if (execution.result.type === 'error') {
-      assert.equal(execution.result.message, 'unknown error');
+    assert.equal(execution.type, 'error');
+    if (execution.type === 'error') {
+      assert.equal(execution.message, 'unknown error');
     }
-    assert.equal(execution.cacheable, true);
   });
 
   void it('create_topic → create_topic_ok с Place topic', async () => {
@@ -471,15 +436,12 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: true,
-      result: {
-        place: { chatId: '-1001', kind: 'topic', topicId: '77' },
-        type: 'create_topic_ok',
-      },
+      place: { chatId: '-1001', kind: 'topic', topicId: '77' },
+      type: 'create_topic_ok',
     });
   });
 
-  void it('create_topic API-отказ → create_topic_failed, не cacheable', async () => {
+  void it('create_topic API-отказ → create_topic_failed', async () => {
     const api = mockApi({
       createForumTopic: async () => {
         throw grammyError(400, 'Bad Request: topics are disabled');
@@ -493,17 +455,14 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: false,
-      result: {
-        code: 'create_topic_failed',
-        commandType: 'create_topic',
-        message: 'Bad Request: topics are disabled',
-        type: 'error',
-      },
+      code: 'create_topic_failed',
+      commandType: 'create_topic',
+      message: 'Bad Request: topics are disabled',
+      type: 'error',
     });
   });
 
-  void it('запрещённый чат → place_unavailable, не cacheable', async () => {
+  void it('запрещённый чат → place_unavailable', async () => {
     const api = mockApi({
       sendMessage: async () => {
         throw grammyError(403, 'Forbidden: bot was blocked by the user');
@@ -517,13 +476,10 @@ void describe('executeOutbound', () => {
     });
 
     assert.deepEqual(execution, {
-      cacheable: false,
-      result: {
-        code: 'place_unavailable',
-        commandType: 'send_message',
-        message: 'Forbidden: bot was blocked by the user',
-        type: 'error',
-      },
+      code: 'place_unavailable',
+      commandType: 'send_message',
+      message: 'Forbidden: bot was blocked by the user',
+      type: 'error',
     });
   });
 });
