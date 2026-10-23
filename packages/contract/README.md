@@ -24,6 +24,6 @@
 Исходы — `encodeOutboundResult` / `tryDecodeOutboundResult` (`send_ok` | `create_topic_ok` | `error`).
 
 - `send_ok.messageId` — id сообщения в транспорте (для последующего `edit_text`).
-- `edit_text.buttons`: поле отсутствует — markup не трогать; `[]` — убрать inline-кнопки; иначе заменить.
+- `edit_text.buttons`: поле отсутствует — markup не трогать; `[]` — убрать inline-кнопки; иначе заменить (нужен `requestId` для pack `callback_data`, как у `send_buttons`).
 
 Envelope: `v` / `direction` / `id` + `command` или `result` (inbound: ещё `eventId`).

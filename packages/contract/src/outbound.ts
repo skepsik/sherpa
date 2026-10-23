@@ -68,13 +68,16 @@ export type OutboundCreateTopicOk = {
 
 /**
  * Редактировать уже отправленное сообщение (стрим в топик / снять кнопки).
- * `buttons` отсутствует — разметку не трогать; `[]` — убрать inline-кнопки.
+ * `buttons` отсутствует — разметку не трогать; `[]` — убрать inline-кнопки;
+ * непустая замена — нужен `requestId` для pack `callback_data` на транспорте.
  */
 export type OutboundEditText = {
   /** Если задано (в т.ч. `[]`) — заменить reply markup. */
   buttons?: OutboundInlineButton[];
   messageId: string;
   place: Place;
+  /** Корреляция кнопок; обязателен транспорту при непустой замене `buttons`. */
+  requestId?: string;
   text: string;
   type: 'edit_text';
 };
@@ -249,12 +252,22 @@ function findEditText(value: Record<string, unknown>): null | OutboundEditText {
   if (!messageId) return null;
   const text = findNonEmptyString(value.text);
   if (!text) return null;
+  let requestId: string | undefined;
+  if (value.requestId !== undefined) {
+    const id = findNonEmptyString(value.requestId);
+    if (!id) return null;
+    requestId = id;
+  }
   if (value.buttons === undefined) {
-    return { messageId, place, text, type: 'edit_text' };
+    return requestId === undefined
+      ? { messageId, place, text, type: 'edit_text' }
+      : { messageId, place, requestId, text, type: 'edit_text' };
   }
   const buttons = findButtons(value.buttons);
   if (!buttons) return null;
-  return { buttons, messageId, place, text, type: 'edit_text' };
+  return requestId === undefined
+    ? { buttons, messageId, place, text, type: 'edit_text' }
+    : { buttons, messageId, place, requestId, text, type: 'edit_text' };
 }
 
 function findError(value: Record<string, unknown>): null | OutboundError {
