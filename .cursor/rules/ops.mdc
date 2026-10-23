@@ -19,6 +19,8 @@ export PATH="$HOME/.local/share/fnm/aliases/default/bin:$PATH"
 
 ```bash
 npm install
+npm run check        # typecheck + lint + format:check
+npm run format       # prettier --write + eslint --fix
 npm run typecheck
 npm run dev:bot
 npm run dev:runner
@@ -67,7 +69,7 @@ gh project item-add 6 --owner skepsik --url https://github.com/skepsik/sherpa/is
 
 ```bash
 rg "review:" apps packages
-npm run typecheck
+npm run check
 ```
 
 Task оборван: `git status`, `git diff`, issue `gh issue view N`, незакрытые `review:`.

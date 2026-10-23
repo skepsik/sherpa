@@ -67,7 +67,7 @@ Issue: <N>
 1. `git diff` + отчёт `@work` (секция «Сверх постановки» — механический реестр наружу: кросс-пакетный `export` / runtime-deps; см. `coder-finalize.mdc`). Непустой сверх — штатный вход в канон, не «дыра cold-start».
 2. Scope issue без «на будущее»; пути вне `Scope:` — из таблицы слоёв отчёта / `git diff --name-only` (`package-lock.json` и аналоги не считают нарушением Scope — см. `coder-finalize.mdc`).
 3. Размещение кода — примитивы в каноническом месте, не в feature-модуле.
-4. Тесты и check — `ops.mdc` § Gate (`npm run typecheck`; расширять по мере появления lint/format).
+4. Тесты и check — `ops.mdc` § Gate (`npm run check`).
 5. **Wire / persistent layout:** если в diff меняется формат на границе
    (протокол бот↔раннер, схема реестра, stream событий харнесса наружу) — сверить с
    постановкой: смысл формата должен быть выполнен; конкретная раскладка

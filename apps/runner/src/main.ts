@@ -1,1 +1,1 @@
-console.log("@sherpa/runner: stub");
+console.log('@sherpa/runner: stub');

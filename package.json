@@ -11,13 +11,34 @@
     "node": ">=22"
   },
   "scripts": {
+    "prepare": "husky",
     "typecheck": "npm run typecheck -w @sherpa/bot && npm run typecheck -w @sherpa/runner",
+    "lint": "eslint .",
+    "format": "prettier --write . && eslint . --fix",
+    "format:check": "prettier --check .",
+    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "lint-staged": "lint-staged",
     "dev:bot": "npm run dev -w @sherpa/bot",
     "dev:runner": "npm run dev -w @sherpa/runner"
   },
   "devDependencies": {
+    "@skepsik/eslint-config": "github:skepsik/eslint-config",
     "@types/node": "^22.13.10",
+    "eslint": "^10.6.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.5.3",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.62.0"
+  },
+  "lint-staged": {
+    "**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "**/*.{js,mjs,cjs,json,yml,yaml,md}": "prettier --write"
   }
 }
