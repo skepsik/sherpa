@@ -5,18 +5,20 @@
   "packageManager": "npm@10.9.8",
   "workspaces": [
     "apps/bot",
-    "apps/runner"
+    "apps/runner",
+    "packages/contract"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "prepare": "husky",
-    "typecheck": "npm run typecheck -w @sherpa/bot && npm run typecheck -w @sherpa/runner",
+    "typecheck": "npm run typecheck -w @sherpa/contract && npm run typecheck -w @sherpa/bot && npm run typecheck -w @sherpa/runner",
     "lint": "eslint .",
     "format": "prettier --write . && eslint . --fix",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run lint && npm run format:check",
+    "test": "npm test -w @sherpa/contract",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
     "lint-staged": "lint-staged",
     "dev:bot": "npm run dev -w @sherpa/bot",
     "dev:runner": "npm run dev -w @sherpa/runner"

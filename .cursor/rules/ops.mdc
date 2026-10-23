@@ -19,7 +19,8 @@ export PATH="$HOME/.local/share/fnm/aliases/default/bin:$PATH"
 
 ```bash
 npm install
-npm run check        # typecheck + lint + format:check
+npm run check        # typecheck + lint + format:check + test
+npm run test         # сейчас: npm test -w @sherpa/contract
 npm run format       # prettier --write + eslint --fix
 npm run typecheck
 npm run dev:bot
