@@ -5,25 +5,43 @@
 ## Границы ответственности
 
 - **Фильтр отправителя.** Рамки: один пользователь, ввод из своего Telegram. Отсечь чужие апдейты — обязанность транспорта (`apps/bot`). В inbound нет идентификатора отправителя: раннер события от «своих» и «чужих» не различит.
-- **`answerCallbackQuery`.** Id callback-запроса Telegram на провод не выносится. Бот отвечает на callback локально; на раннер уходит только `callback` с `requestId` / `data` / `place`.
-- **Идемпотентность inbound.** В envelope обязателен `eventId` (для Telegram — строка из `update_id`). Канал at-least-once (реконнект раннера): раннер дедуплицирует по `eventId`, иначе повторная доставка снова запустит агента.
-- **Длина `send_text` / `edit_text`.** Лимит Telegram — 4096 символов на сообщение. Бот **не** режет текст: слишком длинное → исход `error` с `transport_rejected`. Нарезка на несколько сообщений — зона раннера; один успешный `send_*` / `edit_text` → один `messageId` в `send_ok`.
+- **`answerCallbackQuery`.** Id callback-запроса Telegram на провод не выносится. Бот отвечает на callback локально; на раннер уходит только `question_answer` с `requestId` / `data` / `place`.
+- **Доставка inbound.** Канал отдаёт envelope **at-most-once**: бот шлёт кадр один раз без ack раннера. Обрыв / полумёртвый сокет ловит heartbeat. «Раннер недоступен» — только когда клиента нет; кадр, уже ушедший в мёртвый сокет, не переигрывается. `eventId` (для Telegram — строка из `update_id`) остаётся в envelope для корреляции у раннера.
+- **Длина текста.** Лимит Telegram — 4096 символов на сообщение (`send_message` / `send_question` / `resolve_question`). Бот **не** режет текст: слишком длинное → исход `error` с `transport_rejected`. Нарезка на несколько сообщений — зона раннера.
 - **`callback_data` ≤ 64 байт (Telegram).** Бот без состояния: `requestId` и `data` должны уместиться в один `callback_data`. Слишком длинная пара → отказ отправки кнопок (`transport_rejected` или не слать). Лимиты длины полей на проводе контракт не фиксирует — это ограничение транспорта при упаковке.
-- **Соответствие исхода команде.** Декодер не связывает тип команды с типом результата (`create_topic` теоретически может прийти как `send_ok`). Раннер **обязан** сверять исход с ожидаемым типом команды по `id` корреляции; иначе расхождение будет тихим.
+- **Порядок команд в `Place`.** Лента = история: порядок сообщений в топике обязателен. Бот порядок между outbound-командами **не** гарантирует. Раннер **не** отправляет следующую outbound-команду в тот же `Place`, пока не получил исход предыдущей (по `id` корреляции).
+- **Соответствие исхода команде.** Декодер не связывает тип команды с типом результата. Раннер **обязан** сверять исход с ожидаемым типом команды по `id` корреляции; иначе расхождение будет тихим.
 
 ## Inbound (транспорт → раннер)
 
 `encodeInbound(eventId, event)` / `tryDecodeInbound` → `{ eventId, event }`.
 
-Места `direct` | `topic`, события `user_message` | `callback`.
+Места `direct` | `topic`. Парные `type`:
+
+| Inbound           | Смысл                                           |
+| ----------------- | ----------------------------------------------- |
+| `message`         | текст пользователя в `Place`                    |
+| `question_answer` | ответ на вопрос: `requestId` / `data` / `Place` |
 
 ## Outbound (раннер → транспорт)
 
-`encodeOutbound` / `tryDecodeOutbound` — команды `send_text` | `send_buttons` | `edit_text` | `create_topic`.
+`encodeOutbound` / `tryDecodeOutbound` — команды:
 
-Исходы — `encodeOutboundResult` / `tryDecodeOutboundResult` (`send_ok` | `create_topic_ok` | `error`).
+| Outbound           | Смысл                                                                      |
+| ------------------ | -------------------------------------------------------------------------- |
+| `send_message`     | текст в `Place`                                                            |
+| `send_question`    | вопрос + непустые кнопки + `requestId`                                     |
+| `resolve_question` | фиксация выбора на `messageId` (текст; кнопки снять); единственный edit    |
+| `set_status`       | `Place` + `status`: `busy` \| `idle` (исполнение на транспорте — заглушка) |
+| `create_topic`     | создать форумный топик                                                     |
 
-- `send_ok.messageId` — id сообщения в транспорте (для последующего `edit_text`).
-- `edit_text.buttons`: поле отсутствует — markup не трогать; `[]` — убрать inline-кнопки; иначе заменить (нужен `requestId` для pack `callback_data`, как у `send_buttons`).
+Исходы — `encodeOutboundResult` / `tryDecodeOutboundResult`:
+
+| Исход             | Когда                                                    | Поля                                         |
+| ----------------- | -------------------------------------------------------- | -------------------------------------------- |
+| `send_ok`         | успех `send_message` / `resolve_question` / `set_status` | `commandType`; **без** `messageId`           |
+| `question_ok`     | успех `send_question`                                    | `commandType: 'send_question'` + `messageId` |
+| `create_topic_ok` | успех `create_topic`                                     | `place` (topic)                              |
+| `error`           | отказ                                                    | `commandType` обязателен; код/текст          |
 
 Envelope: `v` / `direction` / `id` + `command` или `result` (inbound: ещё `eventId`).

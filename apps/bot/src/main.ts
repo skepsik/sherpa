@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createChannelServer } from './channel';
-import { createCommandQueue } from './command-queue';
+import { createCommandDedup } from './command-dedup';
 import { loadBotConfig } from './config';
 import { executeOutbound } from './outbound';
 import { createTelegramReceiver } from './receive';
@@ -16,7 +16,7 @@ const repoRoot = resolve(
 loadDotenv({ path: resolve(repoRoot, '.env') });
 
 const config = loadBotConfig();
-const queue = createCommandQueue();
+const dedup = createCommandDedup();
 
 const receiver = createTelegramReceiver({
   config,
@@ -28,8 +28,8 @@ const receiver = createTelegramReceiver({
 
 const channel = createChannelServer({
   config: config.channel,
+  dedup,
   execute: (command) => executeOutbound(receiver.bot.api, command),
-  queue,
 });
 
 await channel.start();

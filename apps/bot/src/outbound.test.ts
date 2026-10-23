@@ -49,7 +49,7 @@ function mockApi(handlers: {
 }
 
 void describe('executeOutbound', () => {
-  void it('send_text → send_ok с messageId; без parse_mode', async () => {
+  void it('send_message → send_ok без messageId; без parse_mode', async () => {
     let captured: unknown;
     const api = mockApi({
       sendMessage: async (chatId, text, other) => {
@@ -63,12 +63,11 @@ void describe('executeOutbound', () => {
     const result = await executeOutbound(api, {
       place: { chatId: '100', kind: 'direct' },
       text: 'привет',
-      type: 'send_text',
+      type: 'send_message',
     });
 
     assert.deepEqual(result, {
-      commandType: 'send_text',
-      messageId: '42',
+      commandType: 'send_message',
       type: 'send_ok',
     });
     assert.deepEqual(captured, {
@@ -78,7 +77,7 @@ void describe('executeOutbound', () => {
     });
   });
 
-  void it('send_text в топик передаёт message_thread_id', async () => {
+  void it('send_message в топик передаёт message_thread_id', async () => {
     let captured: unknown;
     const api = mockApi({
       sendMessage: async (chatId, text, other) => {
@@ -92,7 +91,7 @@ void describe('executeOutbound', () => {
     await executeOutbound(api, {
       place: { chatId: '-100', kind: 'topic', topicId: '55' },
       text: 'ход',
-      type: 'send_text',
+      type: 'send_message',
     });
 
     assert.deepEqual(captured, {
@@ -116,19 +115,19 @@ void describe('executeOutbound', () => {
     const result = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'x'.repeat(TELEGRAM_TEXT_MAX_CHARS + 1),
-      type: 'send_text',
+      type: 'send_message',
     });
 
     assert.equal(called, false);
     assert.deepEqual(result, {
       code: 'transport_rejected',
-      commandType: 'send_text',
+      commandType: 'send_message',
       message: 'text exceeds Telegram limit of 4096 characters',
       type: 'error',
     });
   });
 
-  void it('edit_text длиннее 4096 → transport_rejected, API не вызывается', async () => {
+  void it('resolve_question длиннее 4096 → transport_rejected', async () => {
     let called = false;
     const api = mockApi({
       editMessageText: async () => {
@@ -141,19 +140,19 @@ void describe('executeOutbound', () => {
       messageId: '1',
       place: { chatId: '1', kind: 'direct' },
       text: 'x'.repeat(TELEGRAM_TEXT_MAX_CHARS + 1),
-      type: 'edit_text',
+      type: 'resolve_question',
     });
 
     assert.equal(called, false);
     assert.deepEqual(result, {
       code: 'transport_rejected',
-      commandType: 'edit_text',
+      commandType: 'resolve_question',
       message: 'text exceeds Telegram limit of 4096 characters',
       type: 'error',
     });
   });
 
-  void it('send_buttons пакует callback_data через pack', async () => {
+  void it('send_question → question_ok + messageId; pack callback_data', async () => {
     let keyboard: unknown;
     const api = mockApi({
       sendMessage: async (_chatId, _text, other) => {
@@ -172,13 +171,13 @@ void describe('executeOutbound', () => {
       place: { chatId: '2', kind: 'direct' },
       requestId: 'perm-1',
       text: 'доступ?',
-      type: 'send_buttons',
+      type: 'send_question',
     });
 
     assert.deepEqual(result, {
-      commandType: 'send_buttons',
+      commandType: 'send_question',
       messageId: '9',
-      type: 'send_ok',
+      type: 'question_ok',
     });
     assert.ok(keyboard && typeof keyboard === 'object');
     const rows = (
@@ -211,7 +210,7 @@ void describe('executeOutbound', () => {
       place: { chatId: '1', kind: 'direct' },
       requestId: 'r'.repeat(40),
       text: '?',
-      type: 'send_buttons',
+      type: 'send_question',
     });
 
     assert.equal(called, false);
@@ -221,11 +220,11 @@ void describe('executeOutbound', () => {
     }
   });
 
-  void it('edit_text без buttons — markup не передаётся', async () => {
-    let other: unknown;
+  void it('resolve_question — текст + снятие кнопок → send_ok', async () => {
+    let captured: unknown;
     const api = mockApi({
       editMessageText: async (chatId, messageId, text, opts) => {
-        other = { chatId, messageId, opts, text };
+        captured = { chatId, messageId, opts, text };
         return { message_id: messageId } as Awaited<
           ReturnType<OutboundApi['editMessageText']>
         >;
@@ -235,99 +234,23 @@ void describe('executeOutbound', () => {
     const result = await executeOutbound(api, {
       messageId: '11',
       place: { chatId: '3', kind: 'direct' },
-      text: 'обновлено',
-      type: 'edit_text',
+      text: 'выбрано',
+      type: 'resolve_question',
     });
 
     assert.deepEqual(result, {
-      commandType: 'edit_text',
-      messageId: '11',
+      commandType: 'resolve_question',
       type: 'send_ok',
     });
-    assert.deepEqual(other, {
+    assert.deepEqual(captured, {
       chatId: '3',
       messageId: 11,
-      opts: undefined,
-      text: 'обновлено',
+      opts: { reply_markup: { inline_keyboard: [] } },
+      text: 'выбрано',
     });
   });
 
-  void it('edit_text buttons [] — снимает inline-кнопки', async () => {
-    let markup: unknown;
-    const api = mockApi({
-      editMessageText: async (_c, _m, _t, opts) => {
-        markup = opts?.reply_markup;
-        return true;
-      },
-    });
-
-    const result = await executeOutbound(api, {
-      buttons: [],
-      messageId: '12',
-      place: { chatId: '3', kind: 'direct' },
-      text: 'готово',
-      type: 'edit_text',
-    });
-
-    assert.deepEqual(result, {
-      commandType: 'edit_text',
-      messageId: '12',
-      type: 'send_ok',
-    });
-    assert.deepEqual(markup, { inline_keyboard: [] });
-  });
-
-  void it('edit_text замена кнопок — pack с requestId', async () => {
-    let markup: unknown;
-    const api = mockApi({
-      editMessageText: async (_c, _m, _t, opts) => {
-        markup = opts?.reply_markup;
-        return { message_id: 13 } as Awaited<
-          ReturnType<OutboundApi['editMessageText']>
-        >;
-      },
-    });
-
-    const result = await executeOutbound(api, {
-      buttons: [{ data: 'retry', label: 'Ещё' }],
-      messageId: '13',
-      place: { chatId: '3', kind: 'direct' },
-      requestId: 'perm-2',
-      text: 'ещё раз?',
-      type: 'edit_text',
-    });
-
-    assert.deepEqual(result, {
-      commandType: 'edit_text',
-      messageId: '13',
-      type: 'send_ok',
-    });
-    const rows = (markup as { inline_keyboard: { callback_data: string }[][] })
-      .inline_keyboard;
-    assert.deepEqual(tryUnpackCallbackData(rows[0][0].callback_data), {
-      data: 'retry',
-      requestId: 'perm-2',
-    });
-  });
-
-  void it('edit_text замена кнопок без requestId → transport_rejected', async () => {
-    const api = mockApi({});
-    const result = await executeOutbound(api, {
-      buttons: [{ data: 'x', label: 'X' }],
-      messageId: '1',
-      place: { chatId: '1', kind: 'direct' },
-      text: '?',
-      type: 'edit_text',
-    });
-    assert.deepEqual(result, {
-      code: 'transport_rejected',
-      commandType: 'edit_text',
-      message: 'requestId required when replacing buttons',
-      type: 'error',
-    });
-  });
-
-  void it('message is not modified → send_ok с тем же messageId', async () => {
+  void it('message is not modified → send_ok', async () => {
     const api = mockApi({
       editMessageText: async () => {
         throw grammyError(400, 'Bad Request: message is not modified');
@@ -338,14 +261,42 @@ void describe('executeOutbound', () => {
       messageId: '99',
       place: { chatId: '1', kind: 'direct' },
       text: 'то же',
-      type: 'edit_text',
+      type: 'resolve_question',
     });
 
     assert.deepEqual(result, {
-      commandType: 'edit_text',
-      messageId: '99',
+      commandType: 'resolve_question',
       type: 'send_ok',
     });
+  });
+
+  void it('set_status — заглушка → send_ok; API не вызывается', async () => {
+    let called = false;
+    const api = mockApi({
+      editMessageText: async () => {
+        called = true;
+        return true;
+      },
+      sendMessage: async () => {
+        called = true;
+        return { message_id: 1 } as Awaited<
+          ReturnType<OutboundApi['sendMessage']>
+        >;
+      },
+    });
+
+    for (const status of ['busy', 'idle'] as const) {
+      const result = await executeOutbound(api, {
+        place: { chatId: '1', kind: 'direct' },
+        status,
+        type: 'set_status',
+      });
+      assert.deepEqual(result, {
+        commandType: 'set_status',
+        type: 'send_ok',
+      });
+    }
+    assert.equal(called, false);
   });
 
   void it('429: повтор после retry_after, затем успех', async () => {
@@ -367,13 +318,12 @@ void describe('executeOutbound', () => {
     const result = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'ok',
-      type: 'send_text',
+      type: 'send_message',
     });
 
     assert.equal(calls, 2);
     assert.deepEqual(result, {
-      commandType: 'send_text',
-      messageId: '5',
+      commandType: 'send_message',
       type: 'send_ok',
     });
   });
@@ -392,13 +342,13 @@ void describe('executeOutbound', () => {
     const result = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'ok',
-      type: 'send_text',
+      type: 'send_message',
     });
 
     assert.equal(calls, RATE_LIMIT_MAX_ATTEMPTS);
     assert.deepEqual(result, {
       code: 'send_failed',
-      commandType: 'send_text',
+      commandType: 'send_message',
       message: 'Too Many Requests: retry after 0',
       type: 'error',
     });
@@ -460,12 +410,12 @@ void describe('executeOutbound', () => {
     const result = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'x',
-      type: 'send_text',
+      type: 'send_message',
     });
 
     assert.deepEqual(result, {
       code: 'place_unavailable',
-      commandType: 'send_text',
+      commandType: 'send_message',
       message: 'Forbidden: bot was blocked by the user',
       type: 'error',
     });
