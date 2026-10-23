@@ -1,0 +1,338 @@
+import type { OutboundCommand, OutboundResult } from '@sherpa/contract';
+import type { AddressInfo } from 'node:net';
+import type { RawData } from 'ws';
+
+import {
+  encodeOutbound,
+  tryDecodeInbound,
+  tryDecodeOutboundResult,
+} from '@sherpa/contract';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { after, describe, it } from 'node:test';
+import WebSocket from 'ws';
+
+import type { ChannelConfig } from './channel';
+
+import { createChannelServer } from './channel';
+import { createCommandQueue } from './command-queue';
+
+const SECRET = 'test-channel-secret';
+
+void describe('channel WebSocket', () => {
+  const servers: Array<{ stop: () => Promise<void> }> = [];
+
+  after(async () => {
+    for (const server of servers) {
+      await server.stop();
+    }
+  });
+
+  void it('с секретом: inbound доходит; команда → результат с тем же id', async () => {
+    const { channel, path, port } = await startChannel({
+      execute: async (command) => {
+        assert.equal(command.type, 'send_text');
+        return { commandType: 'send_text', messageId: '42', type: 'send_ok' };
+      },
+    });
+    servers.push(channel);
+
+    const client = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(client);
+
+    assert.equal(
+      channel.tryPublishInbound({
+        event: {
+          place: { chatId: '1', kind: 'direct' },
+          text: 'привет',
+          type: 'user_message',
+        },
+        eventId: '7',
+      }),
+      true,
+    );
+
+    assert.deepEqual(tryDecodeInbound(await messages.next()), {
+      event: {
+        place: { chatId: '1', kind: 'direct' },
+        text: 'привет',
+        type: 'user_message',
+      },
+      eventId: '7',
+    });
+
+    client.send(
+      encodeOutbound('cmd-1', {
+        place: { chatId: '1', kind: 'direct' },
+        text: 'ответ',
+        type: 'send_text',
+      }),
+    );
+    assert.deepEqual(tryDecodeOutboundResult(await messages.next()), {
+      id: 'cmd-1',
+      result: {
+        commandType: 'send_text',
+        messageId: '42',
+        type: 'send_ok',
+      },
+    });
+
+    client.close();
+  });
+
+  void it('без секрета / неверный — 401, обмена нет', async () => {
+    const { channel, path, port } = await startChannel({
+      execute: async () => {
+        throw new Error('execute must not run');
+      },
+    });
+    servers.push(channel);
+
+    await assert.rejects(
+      () => connectClient(port, path, null),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /401|unexpected server response/i);
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      () => connectClient(port, path, 'wrong'),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /401|unexpected server response/i);
+        return true;
+      },
+    );
+
+    assert.equal(
+      channel.tryPublishInbound({
+        event: {
+          place: { chatId: '1', kind: 'direct' },
+          text: 'x',
+          type: 'user_message',
+        },
+        eventId: 'no-runner',
+      }),
+      false,
+    );
+  });
+
+  void it('невалидный wire → close 1003, execute не вызван', async () => {
+    let calls = 0;
+    const { channel, path, port } = await startChannel({
+      execute: async () => {
+        calls += 1;
+        return { commandType: 'send_text', messageId: '1', type: 'send_ok' };
+      },
+    });
+    servers.push(channel);
+
+    const client = await connectClient(port, path, SECRET);
+    const closed = onceCloseCode(client);
+    client.send('not-a-valid-envelope');
+    assert.equal(await closed, 1003);
+    assert.equal(calls, 0);
+  });
+
+  void it('повтор того же id — один execute (в полёте и после)', async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const { channel, path, port } = await startChannel({
+      execute: async () => {
+        calls += 1;
+        await gate;
+        return { commandType: 'send_text', messageId: '1', type: 'send_ok' };
+      },
+    });
+    servers.push(channel);
+
+    const client = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(client);
+    const command: OutboundCommand = {
+      place: { chatId: '1', kind: 'direct' },
+      text: 'x',
+      type: 'send_text',
+    };
+
+    client.send(encodeOutbound('same-id', command));
+    client.send(encodeOutbound('same-id', command));
+
+    await delay(20);
+    assert.equal(calls, 1);
+    release();
+
+    const first = tryDecodeOutboundResult(await messages.next());
+    const second = tryDecodeOutboundResult(await messages.next());
+    assert.equal(first?.id, 'same-id');
+    assert.equal(second?.id, 'same-id');
+    assert.deepEqual(first?.result, second?.result);
+    assert.equal(calls, 1);
+
+    client.send(encodeOutbound('same-id', command));
+    const third = tryDecodeOutboundResult(await messages.next());
+    assert.equal(third?.id, 'same-id');
+    assert.equal(calls, 1);
+
+    client.close();
+  });
+
+  void it('два клиента подряд — активен только последний', async () => {
+    const { channel, path, port } = await startChannel({
+      execute: async () => ({
+        commandType: 'send_text',
+        messageId: '1',
+        type: 'send_ok',
+      }),
+    });
+    servers.push(channel);
+
+    const first = await connectClient(port, path, SECRET);
+    const firstClosed = onceClose(first);
+    const second = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(second);
+    await firstClosed;
+
+    assert.equal(
+      channel.tryPublishInbound({
+        event: {
+          place: { chatId: '1', kind: 'direct' },
+          text: 'только второму',
+          type: 'user_message',
+        },
+        eventId: '9',
+      }),
+      true,
+    );
+
+    assert.equal(tryDecodeInbound(await messages.next())?.eventId, '9');
+
+    first.close();
+    second.close();
+  });
+
+  void it('нет клиента — tryPublishInbound false; буфера нет', async () => {
+    const { channel, path, port } = await startChannel({
+      execute: async () => {
+        throw new Error('unused');
+      },
+    });
+    servers.push(channel);
+
+    assert.equal(
+      channel.tryPublishInbound({
+        event: {
+          place: { chatId: '1', kind: 'direct' },
+          text: 'lost',
+          type: 'user_message',
+        },
+        eventId: '1',
+      }),
+      false,
+    );
+
+    const client = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(client);
+    const raced = Promise.race([
+      messages.next().then(() => 'got' as const),
+      delay(50).then(() => 'timeout' as const),
+    ]);
+    assert.equal(await raced, 'timeout');
+    client.close();
+  });
+});
+
+async function connectClient(port: number, path: string, token: null | string) {
+  const query = token === null ? '' : `?token=${encodeURIComponent(token)}`;
+  const url = `ws://127.0.0.1:${port}${path}${query}`;
+  const ws = new WebSocket(url);
+  await new Promise<void>((resolve, reject) => {
+    ws.once('open', () => resolve());
+    ws.once('error', reject);
+  });
+  return ws;
+}
+
+function createMessageQueue(ws: WebSocket) {
+  const buffered: string[] = [];
+  const waiters: Array<(raw: string) => void> = [];
+  ws.on('message', (data) => {
+    const raw = rawFromData(data);
+    const waiter = waiters.shift();
+    if (waiter !== undefined) waiter(raw);
+    else buffered.push(raw);
+  });
+  return {
+    next() {
+      return new Promise<string>((resolve) => {
+        const raw = buffered.shift();
+        if (raw !== undefined) resolve(raw);
+        else waiters.push(resolve);
+      });
+    },
+  };
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function findFreePort() {
+  return new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address() as AddressInfo;
+      const { port } = address;
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(port);
+      });
+    });
+    server.once('error', reject);
+  });
+}
+
+function onceClose(ws: WebSocket) {
+  return new Promise<void>((resolve) => {
+    ws.once('close', () => resolve());
+  });
+}
+
+function onceCloseCode(ws: WebSocket) {
+  return new Promise<number>((resolve) => {
+    ws.once('close', (code) => resolve(code));
+  });
+}
+
+function rawFromData(data: RawData) {
+  if (typeof data === 'string') return data;
+  if (Buffer.isBuffer(data)) return data.toString('utf8');
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  return Buffer.from(data).toString('utf8');
+}
+
+async function startChannel(options: {
+  execute: (command: OutboundCommand) => Promise<OutboundResult>;
+}) {
+  const port = await findFreePort();
+  const config: ChannelConfig = {
+    host: '127.0.0.1',
+    path: '/v1/channel',
+    port,
+    secret: SECRET,
+  };
+  const channel = createChannelServer({
+    config,
+    execute: options.execute,
+    queue: createCommandQueue(60_000),
+  });
+  await channel.start();
+  return { channel, path: config.path, port };
+}
