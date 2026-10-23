@@ -1,6 +1,6 @@
 # @sherpa/bot
 
-Транспорт Telegram: приём Update, исполнение outbound-команд, WebSocket-канал к раннеру.
+Транспорт Telegram: приём Update, исполнение outbound-команд, WebSocket-канал границы (`@sherpa/contract`).
 
 ## Env
 
@@ -16,17 +16,17 @@
 | `SHERPA_CHANNEL_PORT`       | нет         | bind port, по умолчанию `8787`           |
 | `SHERPA_CHANNEL_PATH`       | нет         | path upgrade, по умолчанию `/v1/channel` |
 
-## Канал WebSocket (для раннера / эпик 3)
+## Канал WebSocket
 
-Бот **слушает**; раннер — исходящий клиент.
+Бот слушает. Клиент канала — исходящее соединение.
 
 - URL (локально): `ws://<host>:<port><path>`
 - Секрет рукопожатия — **только** заголовок `Authorization: Bearer <SHERPA_CHANNEL_SECRET>` на HTTP upgrade. Query-параметр не принимается.
 - Без верного секрета — HTTP `401`, upgrade не завершается, обмена envelope нет.
 - Одно активное соединение: новое успешное рукопожатие вытесняет старое.
 - Кадр: одно текстовое JSON-сообщение = один envelope `@sherpa/contract` (`encodeInbound` / `encodeOutbound` / `encodeOutboundResult`).
-- Inbound: **at-most-once** (один send без ack). Обрыв / полумёртвый сокет — heartbeat; «раннер недоступен» — только когда клиента нет. Кадр, уже ушедший в мёртвый сокет, не переигрывается.
-- Outbound: команда → execute → исход с тем же `id`. Очереди и дедупа по `id` нет; порядок в `Place` и отсутствие повторов команд — зона раннера (эпик 3 / `@sherpa/contract`).
+- Inbound: **at-most-once** (один send без ack). Обрыв / полумёртвый сокет — heartbeat. Нет клиента — inbound не буферизуется; в тот же Place уходит фиксированный текст «Раннер недоступен. Попробуй позже.» (и для текста, и для `question_answer` после локального `answerCallbackQuery`). Кадр, уже ушедший в мёртвый сокет, не переигрывается.
+- Outbound: команда → execute → исход с тем же `id`. Очереди и дедупа по `id` нет.
 
 ### TLS / WSS
 
@@ -34,7 +34,7 @@
 
 ### Пример обмена
 
-1. Раннер подключается с `Authorization: Bearer …`.
+1. Клиент подключается с `Authorization: Bearer …`.
 2. Бот шлёт inbound (после сообщения пользователя):
 
 ```json
@@ -50,7 +50,7 @@
 }
 ```
 
-3. Раннер отвечает командой:
+3. По каналу приходит команда:
 
 ```json
 {
@@ -76,8 +76,6 @@
 }
 ```
 
-Нет раннера / канал упал: inbound не буферизуется; бот сам пишет в тот же Place: «Раннер недоступен. Попробуй позже.» (и для текста, и для `question_answer` после локального `answerCallbackQuery`).
-
 Heartbeat: серверный WebSocket ping ~30 с; молчание → terminate.
 
 ## Запуск
@@ -94,8 +92,8 @@ npm run dev:bot
 
 1. Бот добавлен в супергруппу с топиками (forum); у бота есть право создавать топики.
 2. В `.env`: `TELEGRAM_USER_ID`, `TELEGRAM_ALLOWED_CHAT_IDS` (личка и/или супергруппа).
-3. Поднять бот; подключить тестовый WS-клиент с `Authorization: Bearer …` (или раннер, когда будет).
-4. Личка: текст → inbound на канале; без клиента — «Раннер недоступен».
+3. Поднять бот; подключить тестовый WS-клиент с `Authorization: Bearer …`.
+4. Личка: текст → inbound на канале; без клиента — текст недоступности в Place.
 5. Топик: то же для текста и для `question_answer` (кнопка).
 6. С канала глазами: `send_message`, `send_question`, `resolve_question`, `set_status` (заглушка), `create_topic`.
 7. Второй WS-клиент вытесняет первый.
