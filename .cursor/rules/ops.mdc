@@ -50,7 +50,7 @@ git checkout master && git merge --no-ff epic-<P>
 ls issues/
 # статус: фронтматтер status в issues/issue-<P>-<K>.md
 rg '^status:' issues/
-rg "review:" apps packages
+rg "review:" packages
 ```
 
 ## GitHub (`gh`) — по команде владельца
@@ -73,7 +73,7 @@ gh auth refresh -h github.com -s project,read:project
 ## Gate / recovery
 
 ```bash
-rg "review:" apps packages
+rg "review:" packages
 npm run check
 ```
 

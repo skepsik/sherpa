@@ -6,7 +6,7 @@ import { importX } from 'eslint-plugin-import-x';
 const crossPackageRelative = {
   message:
     'Cross-package imports only via @sherpa/<pkg> (not relative paths into sibling packages).',
-  regex: '^(\\.\\./){2,}(apps|packages)(/|$)',
+  regex: '^(\\.\\./){2,}packages(/|$)',
 };
 
 const deepPackageSrc = {
@@ -91,7 +91,7 @@ export default createConfig(
     },
   },
   {
-    files: ['apps/bot/**/*.{cts,mts,ts,tsx}'],
+    files: ['packages/bot/**/*.{cts,mts,ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -109,7 +109,7 @@ export default createConfig(
     },
   },
   {
-    files: ['apps/runner/**/*.{cts,mts,ts,tsx}'],
+    files: ['packages/runner/**/*.{cts,mts,ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
