@@ -15,11 +15,11 @@ void describe('createCommandDedup', () => {
     const a = dedup.run('a', async () => {
       await firstGate;
       order.push(1);
-      return 1;
+      return { cacheable: true, value: 1 };
     });
     const b = dedup.run('b', async () => {
       order.push(2);
-      return 2;
+      return { cacheable: true, value: 2 };
     });
 
     await delay(10);
@@ -29,7 +29,7 @@ void describe('createCommandDedup', () => {
     assert.deepEqual(order, [2, 1]);
   });
 
-  void it('повтор id в полёте и после — один run', async () => {
+  void it('повтор id в полёте и после кэшируемого — один run', async () => {
     const dedup = createCommandDedup(5_000);
     let calls = 0;
     let release!: () => void;
@@ -40,11 +40,11 @@ void describe('createCommandDedup', () => {
     const first = dedup.run('x', async () => {
       calls += 1;
       await gate;
-      return 'ok';
+      return { cacheable: true, value: 'ok' };
     });
     const second = dedup.run('x', async () => {
       calls += 1;
-      return 'other';
+      return { cacheable: true, value: 'other' };
     });
 
     await delay(10);
@@ -53,7 +53,68 @@ void describe('createCommandDedup', () => {
     assert.deepEqual(await Promise.all([first, second]), ['ok', 'ok']);
     assert.equal(calls, 1);
 
-    assert.equal(await dedup.run('x', async () => 'new'), 'ok');
+    assert.equal(
+      await dedup.run('x', async () => ({ cacheable: true, value: 'new' })),
+      'ok',
+    );
+    assert.equal(calls, 1);
+  });
+
+  void it('после определённого отказа (не cacheable) — снова run', async () => {
+    const dedup = createCommandDedup(5_000);
+    let calls = 0;
+
+    assert.equal(
+      await dedup.run('retry', async () => {
+        calls += 1;
+        return { cacheable: false, value: 'err1' };
+      }),
+      'err1',
+    );
+    assert.equal(
+      await dedup.run('retry', async () => {
+        calls += 1;
+        return { cacheable: false, value: 'err2' };
+      }),
+      'err2',
+    );
+    assert.equal(calls, 2);
+
+    assert.equal(
+      await dedup.run('retry', async () => {
+        calls += 1;
+        return { cacheable: true, value: 'ok' };
+      }),
+      'ok',
+    );
+    assert.equal(
+      await dedup.run('retry', async () => {
+        calls += 1;
+        return { cacheable: true, value: 'other' };
+      }),
+      'ok',
+    );
+    assert.equal(calls, 3);
+  });
+
+  void it('неопределённый отказ (cacheable) — кэш без второго run', async () => {
+    const dedup = createCommandDedup(5_000);
+    let calls = 0;
+
+    assert.equal(
+      await dedup.run('net', async () => {
+        calls += 1;
+        return { cacheable: true, value: 'uncertain' };
+      }),
+      'uncertain',
+    );
+    assert.equal(
+      await dedup.run('net', async () => {
+        calls += 1;
+        return { cacheable: true, value: 'other' };
+      }),
+      'uncertain',
+    );
     assert.equal(calls, 1);
   });
 
@@ -63,7 +124,7 @@ void describe('createCommandDedup', () => {
     assert.equal(
       await dedup.run('ttl', async () => {
         calls += 1;
-        return 'first';
+        return { cacheable: true, value: 'first' };
       }),
       'first',
     );
@@ -71,7 +132,7 @@ void describe('createCommandDedup', () => {
     assert.equal(
       await dedup.run('ttl', async () => {
         calls += 1;
-        return 'second';
+        return { cacheable: true, value: 'second' };
       }),
       'second',
     );

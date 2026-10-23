@@ -35,13 +35,25 @@ export type OutboundApi = Pick<
   'createForumTopic' | 'editMessageText' | 'sendMessage'
 >;
 
+/**
+ * Исход исполнения + признак для дедупа по `id`:
+ * кэшировать успех и неопределённый отказ; определённый — нет.
+ */
+export type OutboundExecution = {
+  cacheable: boolean;
+  result: OutboundResult;
+};
+
 type InlineKeyboard = { callback_data: string; text: string }[][];
 
-/** Команда контракта → исход после вызова Telegram. */
+/** Короткий fallback, если у отказа нет описания. */
+const UNKNOWN_ERROR_MESSAGE = 'unknown error';
+
+/** Команда контракта → исход после вызова Telegram (+ cacheable для дедупа). */
 export async function executeOutbound(
   api: OutboundApi,
   command: OutboundCommand,
-): Promise<OutboundResult> {
+): Promise<OutboundExecution> {
   switch (command.type) {
     case 'create_topic':
       return executeCreateTopic(api, command);
@@ -78,19 +90,19 @@ async function callWithRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
 async function executeCreateTopic(
   api: OutboundApi,
   command: OutboundCreateTopic,
-): Promise<OutboundResult> {
+): Promise<OutboundExecution> {
   try {
     const topic = await callWithRateLimitRetry(() =>
       api.createForumTopic(command.chatId, command.title),
     );
-    return {
+    return ok({
       place: {
         chatId: command.chatId,
         kind: 'topic',
         topicId: String(topic.message_thread_id),
       },
       type: 'create_topic_ok',
-    };
+    });
   } catch (error) {
     return mapApiError(error, 'create_topic');
   }
@@ -99,7 +111,7 @@ async function executeCreateTopic(
 async function executeResolveQuestion(
   api: OutboundApi,
   command: OutboundResolveQuestion,
-): Promise<OutboundResult> {
+): Promise<OutboundExecution> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'resolve_question',
@@ -116,10 +128,10 @@ async function executeResolveQuestion(
         { reply_markup: { inline_keyboard: [] } },
       ),
     );
-    return sendOk('resolve_question');
+    return ok(sendOk('resolve_question'));
   } catch (error) {
     if (isMessageNotModified(error)) {
-      return sendOk('resolve_question');
+      return ok(sendOk('resolve_question'));
     }
     return mapApiError(error, 'resolve_question');
   }
@@ -128,7 +140,7 @@ async function executeResolveQuestion(
 async function executeSendMessage(
   api: OutboundApi,
   command: OutboundSendMessage,
-): Promise<OutboundResult> {
+): Promise<OutboundExecution> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'send_message',
@@ -144,7 +156,7 @@ async function executeSendMessage(
         threadOptions(command.place),
       ),
     );
-    return sendOk('send_message');
+    return ok(sendOk('send_message'));
   } catch (error) {
     return mapApiError(error, 'send_message');
   }
@@ -153,7 +165,7 @@ async function executeSendMessage(
 async function executeSendQuestion(
   api: OutboundApi,
   command: OutboundSendQuestion,
-): Promise<OutboundResult> {
+): Promise<OutboundExecution> {
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'send_question',
@@ -173,19 +185,24 @@ async function executeSendQuestion(
         reply_markup: { inline_keyboard: keyboard },
       }),
     );
-    return {
+    return ok({
       commandType: 'send_question',
       messageId: String(message.message_id),
       type: 'question_ok',
-    };
+    });
   } catch (error) {
     return mapApiError(error, 'send_question');
   }
 }
 
-function executeSetStatus(command: OutboundSetStatus): OutboundResult {
+function executeSetStatus(command: OutboundSetStatus): OutboundExecution {
   void command;
-  return sendOk('set_status');
+  return ok(sendOk('set_status'));
+}
+
+/** Определённый отказ API: GrammyError с `error_code < 500`. */
+function isDefiniteApiFailure(error: unknown) {
+  return error instanceof GrammyError && error.error_code < 500;
 }
 
 function isMessageNotModified(error: unknown) {
@@ -211,26 +228,42 @@ function isPlaceUnavailable(error: unknown) {
 function mapApiError(
   error: unknown,
   commandType: OutboundCommandType,
-): OutboundError {
-  const description =
-    error instanceof GrammyError ? error.description : undefined;
+): OutboundExecution {
   const code = resolveOutboundErrorCode(error, commandType);
-  const result: OutboundError = { code, commandType, type: 'error' };
-  if (description !== undefined) result.message = description;
-  else if (error instanceof Error) result.message = error.message;
-  return result;
+  const result: OutboundError = {
+    code,
+    commandType,
+    message: resolveErrorMessage(error),
+    type: 'error',
+  };
+  return { cacheable: !isDefiniteApiFailure(error), result };
+}
+
+function ok(result: OutboundResult): OutboundExecution {
+  return { cacheable: true, result };
 }
 
 function rejected(
   commandType: OutboundCommandType,
   message: string,
-): OutboundError {
+): OutboundExecution {
   return {
-    code: 'transport_rejected',
-    commandType,
-    message,
-    type: 'error',
+    cacheable: false,
+    result: {
+      code: 'transport_rejected',
+      commandType,
+      message,
+      type: 'error',
+    },
   };
+}
+
+function resolveErrorMessage(error: unknown) {
+  if (error instanceof GrammyError) {
+    return error.description !== '' ? error.description : UNKNOWN_ERROR_MESSAGE;
+  }
+  if (error instanceof Error && error.message !== '') return error.message;
+  return UNKNOWN_ERROR_MESSAGE;
 }
 
 function resolveOutboundErrorCode(

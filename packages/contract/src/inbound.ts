@@ -15,7 +15,7 @@ export type InboundDecoded = {
 
 /**
  * Envelope inbound на проводе.
- * `eventId` — корреляция / дедуп у раннера (напр. Telegram `update_id`).
+ * `eventId` — дедуп у раннера (для Telegram — строка из `update_id`).
  */
 export type InboundEnvelope = {
   direction: Extract<WireDirection, 'inbound'>;
@@ -31,8 +31,8 @@ export type InboundEventType = (typeof INBOUND_EVENT_TYPES)[number];
 /** Текст пользователя в месте разговора. */
 export type InboundMessage = {
   place: Place;
-  /** Текст, если в апдейте он был. */
-  text?: string;
+  /** Непустой текст сообщения. */
+  text: string;
   type: 'message';
 };
 
@@ -96,9 +96,9 @@ function findInboundEnvelope(value: unknown): InboundDecoded | null {
 function findMessage(value: Record<string, unknown>): InboundMessage | null {
   const place = findPlace(value.place);
   if (!place) return null;
-  if (value.text === undefined) return { place, type: 'message' };
-  if (typeof value.text !== 'string') return null;
-  return { place, text: value.text, type: 'message' };
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
+  return { place, text, type: 'message' };
 }
 
 function findQuestionAnswer(

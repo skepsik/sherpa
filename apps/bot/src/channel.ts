@@ -1,4 +1,4 @@
-import type { OutboundCommand, OutboundResult } from '@sherpa/contract';
+import type { OutboundCommand } from '@sherpa/contract';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { RawData } from 'ws';
@@ -8,11 +8,13 @@ import {
   encodeOutboundResult,
   tryDecodeOutbound,
 } from '@sherpa/contract';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 
 import type { CommandDedup } from './command-dedup';
 import type { AcceptedInbound } from './map-update';
+import type { OutboundExecution } from './outbound';
 
 /** Параметры bind и секрет канала (из env). */
 export type ChannelConfig = {
@@ -41,7 +43,7 @@ type LiveSocket = WebSocket & { isAlive: boolean };
 export function createChannelServer(options: {
   config: ChannelConfig;
   dedup: CommandDedup;
-  execute: (command: OutboundCommand) => Promise<OutboundResult>;
+  execute: (command: OutboundCommand) => Promise<OutboundExecution>;
 }): ChannelServer {
   const { config, dedup, execute } = options;
   let httpServer: HttpServer | null = null;
@@ -123,9 +125,10 @@ export function createChannelServer(options: {
     }
 
     try {
-      const result = await dedup.run(decoded.id, () =>
-        execute(decoded.command),
-      );
+      const result = await dedup.run(decoded.id, async () => {
+        const outcome = await execute(decoded.command);
+        return { cacheable: outcome.cacheable, value: outcome.result };
+      });
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(encodeOutboundResult(decoded.id, result));
       }
@@ -154,7 +157,7 @@ export function createChannelServer(options: {
     }
 
     const token = findHandshakeToken(req.headers.authorization);
-    if (token !== config.secret) {
+    if (token === null || !isChannelSecret(token, config.secret)) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
@@ -218,6 +221,16 @@ export function findHandshakeToken(
   if (authorization === undefined) return null;
   const match = /^Bearer\s+(\S+)$/i.exec(authorization.trim());
   return match?.[1] ?? null;
+}
+
+/**
+ * Сравнение секрета рукопожатия: хеши одинаковой длины + `timingSafeEqual`
+ * (без раннего выхода по длине исходных строк).
+ */
+export function isChannelSecret(presented: string, expected: string) {
+  const a = createHash('sha256').update(presented, 'utf8').digest();
+  const b = createHash('sha256').update(expected, 'utf8').digest();
+  return timingSafeEqual(a, b);
 }
 
 function rawFromData(data: RawData) {

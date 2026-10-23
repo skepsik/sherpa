@@ -142,6 +142,7 @@ void describe('outbound encode/decode', () => {
       const result: OutboundError = {
         code,
         commandType: 'send_message',
+        message: `err-${code}`,
         type: 'error',
       };
       assert.deepEqual(
@@ -377,6 +378,7 @@ void describe('outbound encode/decode', () => {
         raw: outboundResultWire({
           code: 'unknown',
           commandType: 'send_message',
+          message: 'x',
           type: 'error',
         }),
       },
@@ -419,7 +421,28 @@ void describe('outbound encode/decode', () => {
       },
       {
         name: 'error без commandType',
-        raw: outboundResultWire({ code: 'send_failed', type: 'error' }),
+        raw: outboundResultWire({
+          code: 'send_failed',
+          message: 'x',
+          type: 'error',
+        }),
+      },
+      {
+        name: 'error без message',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          commandType: 'send_message',
+          type: 'error',
+        }),
+      },
+      {
+        name: 'error с пустым message',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          commandType: 'send_message',
+          message: '',
+          type: 'error',
+        }),
       },
       {
         name: 'error message не строка',
@@ -435,6 +458,7 @@ void describe('outbound encode/decode', () => {
         raw: outboundResultWire({
           code: 'send_failed',
           commandType: 'nope',
+          message: 'x',
           type: 'error',
         }),
       },

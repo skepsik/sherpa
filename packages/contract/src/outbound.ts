@@ -74,11 +74,12 @@ export type OutboundCreateTopicOk = {
 /**
  * Отказ транспорта: команда не исполнена.
  * `commandType` — тип команды, на которой отказ.
+ * `message` — непустая строка (описание отказа).
  */
 export type OutboundError = {
   code: OutboundErrorCode;
   commandType: OutboundCommandType;
-  message?: string;
+  message: string;
   type: 'error';
 };
 
@@ -265,16 +266,14 @@ function findCreateTopicOk(
 function findError(value: Record<string, unknown>): null | OutboundError {
   if (!isErrorCode(value.code)) return null;
   if (!isCommandType(value.commandType)) return null;
-  const error: OutboundError = {
+  const message = findNonEmptyString(value.message);
+  if (!message) return null;
+  return {
     code: value.code,
     commandType: value.commandType,
+    message,
     type: 'error',
   };
-  if (value.message !== undefined) {
-    if (typeof value.message !== 'string') return null;
-    error.message = value.message;
-  }
-  return error;
 }
 
 function findOutboundCommandEnvelope(

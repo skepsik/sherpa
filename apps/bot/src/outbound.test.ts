@@ -60,15 +60,18 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       place: { chatId: '100', kind: 'direct' },
       text: 'привет',
       type: 'send_message',
     });
 
-    assert.deepEqual(result, {
-      commandType: 'send_message',
-      type: 'send_ok',
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        commandType: 'send_message',
+        type: 'send_ok',
+      },
     });
     assert.deepEqual(captured, {
       chatId: '100',
@@ -101,7 +104,7 @@ void describe('executeOutbound', () => {
     });
   });
 
-  void it('текст длиннее 4096 → transport_rejected, API не вызывается', async () => {
+  void it('текст длиннее 4096 → transport_rejected, не cacheable', async () => {
     let called = false;
     const api = mockApi({
       sendMessage: async () => {
@@ -112,18 +115,21 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'x'.repeat(TELEGRAM_TEXT_MAX_CHARS + 1),
       type: 'send_message',
     });
 
     assert.equal(called, false);
-    assert.deepEqual(result, {
-      code: 'transport_rejected',
-      commandType: 'send_message',
-      message: 'text exceeds Telegram limit of 4096 characters',
-      type: 'error',
+    assert.deepEqual(execution, {
+      cacheable: false,
+      result: {
+        code: 'transport_rejected',
+        commandType: 'send_message',
+        message: 'text exceeds Telegram limit of 4096 characters',
+        type: 'error',
+      },
     });
   });
 
@@ -136,7 +142,7 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       messageId: '1',
       place: { chatId: '1', kind: 'direct' },
       text: 'x'.repeat(TELEGRAM_TEXT_MAX_CHARS + 1),
@@ -144,11 +150,14 @@ void describe('executeOutbound', () => {
     });
 
     assert.equal(called, false);
-    assert.deepEqual(result, {
-      code: 'transport_rejected',
-      commandType: 'resolve_question',
-      message: 'text exceeds Telegram limit of 4096 characters',
-      type: 'error',
+    assert.deepEqual(execution, {
+      cacheable: false,
+      result: {
+        code: 'transport_rejected',
+        commandType: 'resolve_question',
+        message: 'text exceeds Telegram limit of 4096 characters',
+        type: 'error',
+      },
     });
   });
 
@@ -163,7 +172,7 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       buttons: [
         { data: 'allow', label: 'Да' },
         { data: 'deny', label: 'Нет' },
@@ -174,10 +183,13 @@ void describe('executeOutbound', () => {
       type: 'send_question',
     });
 
-    assert.deepEqual(result, {
-      commandType: 'send_question',
-      messageId: '9',
-      type: 'question_ok',
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        commandType: 'send_question',
+        messageId: '9',
+        type: 'question_ok',
+      },
     });
     assert.ok(keyboard && typeof keyboard === 'object');
     const rows = (
@@ -205,7 +217,7 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       buttons: [{ data: 'd'.repeat(40), label: 'Ok' }],
       place: { chatId: '1', kind: 'direct' },
       requestId: 'r'.repeat(40),
@@ -214,9 +226,11 @@ void describe('executeOutbound', () => {
     });
 
     assert.equal(called, false);
-    assert.equal(result.type, 'error');
-    if (result.type === 'error') {
-      assert.equal(result.code, 'transport_rejected');
+    assert.equal(execution.cacheable, false);
+    assert.equal(execution.result.type, 'error');
+    if (execution.result.type === 'error') {
+      assert.equal(execution.result.code, 'transport_rejected');
+      assert.ok(execution.result.message.length > 0);
     }
   });
 
@@ -231,16 +245,19 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       messageId: '11',
       place: { chatId: '3', kind: 'direct' },
       text: 'выбрано',
       type: 'resolve_question',
     });
 
-    assert.deepEqual(result, {
-      commandType: 'resolve_question',
-      type: 'send_ok',
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        commandType: 'resolve_question',
+        type: 'send_ok',
+      },
     });
     assert.deepEqual(captured, {
       chatId: '3',
@@ -257,16 +274,19 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       messageId: '99',
       place: { chatId: '1', kind: 'direct' },
       text: 'то же',
       type: 'resolve_question',
     });
 
-    assert.deepEqual(result, {
-      commandType: 'resolve_question',
-      type: 'send_ok',
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        commandType: 'resolve_question',
+        type: 'send_ok',
+      },
     });
   });
 
@@ -286,14 +306,17 @@ void describe('executeOutbound', () => {
     });
 
     for (const status of ['busy', 'idle'] as const) {
-      const result = await executeOutbound(api, {
+      const execution = await executeOutbound(api, {
         place: { chatId: '1', kind: 'direct' },
         status,
         type: 'set_status',
       });
-      assert.deepEqual(result, {
-        commandType: 'set_status',
-        type: 'send_ok',
+      assert.deepEqual(execution, {
+        cacheable: true,
+        result: {
+          commandType: 'set_status',
+          type: 'send_ok',
+        },
       });
     }
     assert.equal(called, false);
@@ -315,20 +338,23 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'ok',
       type: 'send_message',
     });
 
     assert.equal(calls, 2);
-    assert.deepEqual(result, {
-      commandType: 'send_message',
-      type: 'send_ok',
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        commandType: 'send_message',
+        type: 'send_ok',
+      },
     });
   });
 
-  void it('429 исчерпан → send_failed', async () => {
+  void it('429 исчерпан → send_failed, не cacheable (error_code < 500)', async () => {
     let calls = 0;
     const api = mockApi({
       sendMessage: async () => {
@@ -339,19 +365,90 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'ok',
       type: 'send_message',
     });
 
     assert.equal(calls, RATE_LIMIT_MAX_ATTEMPTS);
-    assert.deepEqual(result, {
-      code: 'send_failed',
-      commandType: 'send_message',
-      message: 'Too Many Requests: retry after 0',
-      type: 'error',
+    assert.deepEqual(execution, {
+      cacheable: false,
+      result: {
+        code: 'send_failed',
+        commandType: 'send_message',
+        message: 'Too Many Requests: retry after 0',
+        type: 'error',
+      },
     });
+  });
+
+  void it('сеть / не-GrammyError → send_failed, cacheable', async () => {
+    const api = mockApi({
+      sendMessage: async () => {
+        throw new Error('socket hang up');
+      },
+    });
+
+    const execution = await executeOutbound(api, {
+      place: { chatId: '1', kind: 'direct' },
+      text: 'ok',
+      type: 'send_message',
+    });
+
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        code: 'send_failed',
+        commandType: 'send_message',
+        message: 'socket hang up',
+        type: 'error',
+      },
+    });
+  });
+
+  void it('GrammyError 500 → send_failed, cacheable', async () => {
+    const api = mockApi({
+      sendMessage: async () => {
+        throw grammyError(500, 'Internal Server Error');
+      },
+    });
+
+    const execution = await executeOutbound(api, {
+      place: { chatId: '1', kind: 'direct' },
+      text: 'ok',
+      type: 'send_message',
+    });
+
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        code: 'send_failed',
+        commandType: 'send_message',
+        message: 'Internal Server Error',
+        type: 'error',
+      },
+    });
+  });
+
+  void it('отказ без сообщения → fallback message', async () => {
+    const api = mockApi({
+      sendMessage: async () => {
+        throw new Error('');
+      },
+    });
+
+    const execution = await executeOutbound(api, {
+      place: { chatId: '1', kind: 'direct' },
+      text: 'ok',
+      type: 'send_message',
+    });
+
+    assert.equal(execution.result.type, 'error');
+    if (execution.result.type === 'error') {
+      assert.equal(execution.result.message, 'unknown error');
+    }
+    assert.equal(execution.cacheable, true);
   });
 
   void it('create_topic → create_topic_ok с Place topic', async () => {
@@ -367,57 +464,66 @@ void describe('executeOutbound', () => {
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       chatId: '-1001',
       title: 'alpha',
       type: 'create_topic',
     });
 
-    assert.deepEqual(result, {
-      place: { chatId: '-1001', kind: 'topic', topicId: '77' },
-      type: 'create_topic_ok',
+    assert.deepEqual(execution, {
+      cacheable: true,
+      result: {
+        place: { chatId: '-1001', kind: 'topic', topicId: '77' },
+        type: 'create_topic_ok',
+      },
     });
   });
 
-  void it('create_topic API-отказ → create_topic_failed', async () => {
+  void it('create_topic API-отказ → create_topic_failed, не cacheable', async () => {
     const api = mockApi({
       createForumTopic: async () => {
         throw grammyError(400, 'Bad Request: topics are disabled');
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       chatId: '-1001',
       title: 'x',
       type: 'create_topic',
     });
 
-    assert.deepEqual(result, {
-      code: 'create_topic_failed',
-      commandType: 'create_topic',
-      message: 'Bad Request: topics are disabled',
-      type: 'error',
+    assert.deepEqual(execution, {
+      cacheable: false,
+      result: {
+        code: 'create_topic_failed',
+        commandType: 'create_topic',
+        message: 'Bad Request: topics are disabled',
+        type: 'error',
+      },
     });
   });
 
-  void it('запрещённый чат → place_unavailable', async () => {
+  void it('запрещённый чат → place_unavailable, не cacheable', async () => {
     const api = mockApi({
       sendMessage: async () => {
         throw grammyError(403, 'Forbidden: bot was blocked by the user');
       },
     });
 
-    const result = await executeOutbound(api, {
+    const execution = await executeOutbound(api, {
       place: { chatId: '1', kind: 'direct' },
       text: 'x',
       type: 'send_message',
     });
 
-    assert.deepEqual(result, {
-      code: 'place_unavailable',
-      commandType: 'send_message',
-      message: 'Forbidden: bot was blocked by the user',
-      type: 'error',
+    assert.deepEqual(execution, {
+      cacheable: false,
+      result: {
+        code: 'place_unavailable',
+        commandType: 'send_message',
+        message: 'Forbidden: bot was blocked by the user',
+        type: 'error',
+      },
     });
   });
 });
