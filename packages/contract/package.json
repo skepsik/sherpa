@@ -1,0 +1,12 @@
+{
+  "name": "@sherpa/contract",
+  "private": true,
+  "type": "module",
+  "description": "Контракт границы транспорт ↔ раннер (типы/схемы протокола).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
