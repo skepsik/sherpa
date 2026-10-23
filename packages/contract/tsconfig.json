@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
+    // review-kept: Bundler/ESNext вместо base NodeNext — пакет экспортирует сырой `.ts`; eslint `import-x/extensions` запрещает `.js`/`.ts` в relative import (NodeNext+расширения ломают lint, extensionless — tsc под NodeNext)
     "module": "ESNext",
     "moduleResolution": "Bundler"
   },

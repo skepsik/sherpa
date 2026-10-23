@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  encodeInbound,
-  type InboundCallback,
-  type InboundUserMessage,
-  tryDecodeInbound,
-} from './inbound';
+import type { InboundCallback, InboundUserMessage } from './inbound';
+
+import { encodeInbound, tryDecodeInbound } from './inbound';
 import { isDirectPlace, isTopicPlace } from './place';
+
+function inboundWire(event: unknown, overrides: Record<string, unknown> = {}) {
+  return JSON.stringify({ direction: 'inbound', event, v: 1, ...overrides });
+}
 
 void describe('inbound encode/decode', () => {
   void it('roundtrip user_message в личке', () => {
@@ -43,14 +44,81 @@ void describe('inbound encode/decode', () => {
     );
     assert.equal(
       tryDecodeInbound(
-        JSON.stringify({
-          direction: 'inbound',
-          event: {
-            data: 'allow',
+        inboundWire({
+          data: 'allow',
+          place: { chatId: 'c', kind: 'direct' },
+          type: 'callback',
+        }),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire({
+          place: { chatId: '', kind: 'direct' },
+          type: 'user_message',
+        }),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire({
+          place: { chatId: 'c', kind: 'topic' },
+          type: 'user_message',
+        }),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire({
+          place: { chatId: 'c', kind: 'topic', topicId: '' },
+          type: 'user_message',
+        }),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire(
+          {
             place: { chatId: 'c', kind: 'direct' },
-            type: 'callback',
+            type: 'user_message',
           },
-          v: 1,
+          { v: 2 },
+        ),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire({
+          data: '',
+          place: { chatId: 'c', kind: 'direct' },
+          requestId: 'r1',
+          type: 'callback',
+        }),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire({
+          data: 'allow',
+          place: { chatId: 'c', kind: 'direct' },
+          requestId: '',
+          type: 'callback',
+        }),
+      ),
+      null,
+    );
+    assert.equal(
+      tryDecodeInbound(
+        inboundWire({
+          place: { chatId: 'c', kind: 'direct' },
+          text: 1,
+          type: 'user_message',
         }),
       ),
       null,
