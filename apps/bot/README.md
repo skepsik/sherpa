@@ -26,7 +26,7 @@
 - Одно активное соединение: новое успешное рукопожатие вытесняет старое.
 - Кадр: одно текстовое JSON-сообщение = один envelope `@sherpa/contract` (`encodeInbound` / `encodeOutbound` / `encodeOutboundResult`).
 - Inbound: **at-most-once** (один send без ack). Обрыв / полумёртвый сокет — heartbeat; «раннер недоступен» — только когда клиента нет. Кадр, уже ушедший в мёртвый сокет, не переигрывается.
-- Outbound: дедуп по `id` команды (повтор в полёте и после — один execute). Очереди исполнения нет; порядок в `Place` обеспечивает раннер (см. `@sherpa/contract`).
+- Outbound: дедуп по `id` команды. Повтор в полёте — один execute. После исхода в окне TTL: в кэш кладутся успех и **неопределённый** `error` (сеть / `GrammyError` с `error_code >= 500`) — повтор `id` вернёт кэш без второго вызова Telegram; **определённый** `error` (`transport_rejected` или `GrammyError` с `error_code < 500`) не кэшируется — тот же `id` снова execute. Очереди исполнения нет; порядок в `Place` обеспечивает раннер (см. `@sherpa/contract`).
 
 ### TLS / WSS
 

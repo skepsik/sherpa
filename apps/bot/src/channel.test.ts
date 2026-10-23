@@ -1,4 +1,4 @@
-import type { OutboundCommand, OutboundResult } from '@sherpa/contract';
+import type { OutboundCommand } from '@sherpa/contract';
 import type { AddressInfo } from 'node:net';
 import type { RawData } from 'ws';
 
@@ -13,8 +13,13 @@ import { after, describe, it } from 'node:test';
 import WebSocket from 'ws';
 
 import type { ChannelConfig } from './channel';
+import type { OutboundExecution } from './outbound';
 
-import { createChannelServer, findHandshakeToken } from './channel';
+import {
+  createChannelServer,
+  findHandshakeToken,
+  isChannelSecret,
+} from './channel';
 import { createCommandDedup } from './command-dedup';
 
 const SECRET = 'test-channel-secret';
@@ -32,7 +37,7 @@ void describe('channel WebSocket', () => {
     const { channel, path, port } = await startChannel({
       execute: async (command) => {
         assert.equal(command.type, 'send_message');
-        return { commandType: 'send_message', type: 'send_ok' };
+        return okSend();
       },
     });
     servers.push(channel);
@@ -132,7 +137,7 @@ void describe('channel WebSocket', () => {
     const { channel, path, port } = await startChannel({
       execute: async () => {
         calls += 1;
-        return { commandType: 'send_message', type: 'send_ok' };
+        return okSend();
       },
     });
     servers.push(channel);
@@ -155,7 +160,7 @@ void describe('channel WebSocket', () => {
       execute: async () => {
         calls += 1;
         await gate;
-        return { commandType: 'send_message', type: 'send_ok' };
+        return okSend();
       },
     });
     servers.push(channel);
@@ -190,6 +195,83 @@ void describe('channel WebSocket', () => {
     client.close();
   });
 
+  void it('после определённого error — повтор id снова execute', async () => {
+    let calls = 0;
+    const { channel, path, port } = await startChannel({
+      execute: async () => {
+        calls += 1;
+        return {
+          cacheable: false,
+          result: {
+            code: 'transport_rejected',
+            commandType: 'send_message',
+            message: 'too long',
+            type: 'error',
+          },
+        };
+      },
+    });
+    servers.push(channel);
+
+    const client = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(client);
+    const command: OutboundCommand = {
+      place: { chatId: '1', kind: 'direct' },
+      text: 'x',
+      type: 'send_message',
+    };
+
+    client.send(encodeOutbound('retry-id', command));
+    assert.equal(
+      tryDecodeOutboundResult(await messages.next())?.result.type,
+      'error',
+    );
+    client.send(encodeOutbound('retry-id', command));
+    assert.equal(
+      tryDecodeOutboundResult(await messages.next())?.result.type,
+      'error',
+    );
+    assert.equal(calls, 2);
+
+    client.close();
+  });
+
+  void it('после неопределённого error — кэш, без второго execute', async () => {
+    let calls = 0;
+    const { channel, path, port } = await startChannel({
+      execute: async () => {
+        calls += 1;
+        return {
+          cacheable: true,
+          result: {
+            code: 'send_failed',
+            commandType: 'send_message',
+            message: 'socket hang up',
+            type: 'error',
+          },
+        };
+      },
+    });
+    servers.push(channel);
+
+    const client = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(client);
+    const command: OutboundCommand = {
+      place: { chatId: '1', kind: 'direct' },
+      text: 'x',
+      type: 'send_message',
+    };
+
+    client.send(encodeOutbound('uncert-id', command));
+    const first = tryDecodeOutboundResult(await messages.next());
+    client.send(encodeOutbound('uncert-id', command));
+    const second = tryDecodeOutboundResult(await messages.next());
+    assert.deepEqual(first?.result, second?.result);
+    assert.equal(calls, 1);
+
+    client.close();
+  });
+
   void it('разные id не сериализуются очередью', async () => {
     let releaseA!: () => void;
     const gateA = new Promise<void>((resolve) => {
@@ -203,7 +285,7 @@ void describe('channel WebSocket', () => {
         if (command.type === 'send_message' && command.text === 'a') {
           await gateA;
         }
-        return { commandType: 'send_message', type: 'send_ok' };
+        return okSend();
       },
     });
     servers.push(channel);
@@ -242,10 +324,7 @@ void describe('channel WebSocket', () => {
 
   void it('два клиента подряд — активен только последний', async () => {
     const { channel, path, port } = await startChannel({
-      execute: async () => ({
-        commandType: 'send_message',
-        type: 'send_ok',
-      }),
+      execute: async () => okSend(),
     });
     servers.push(channel);
 
@@ -310,6 +389,15 @@ void describe('findHandshakeToken', () => {
     assert.equal(findHandshakeToken('bearer secret'), 'secret');
     assert.equal(findHandshakeToken(undefined), null);
     assert.equal(findHandshakeToken('Basic secret'), null);
+  });
+});
+
+void describe('isChannelSecret', () => {
+  void it('совпадение / разная длина / другой текст', () => {
+    assert.equal(isChannelSecret('secret', 'secret'), true);
+    assert.equal(isChannelSecret('sec', 'secret'), false);
+    assert.equal(isChannelSecret('secret!', 'secret'), false);
+    assert.equal(isChannelSecret('wrong', 'secret'), false);
   });
 });
 
@@ -380,6 +468,13 @@ function findFreePort() {
   });
 }
 
+function okSend(): OutboundExecution {
+  return {
+    cacheable: true,
+    result: { commandType: 'send_message', type: 'send_ok' },
+  };
+}
+
 function onceClose(ws: WebSocket) {
   return new Promise<void>((resolve) => {
     ws.once('close', () => resolve());
@@ -400,7 +495,7 @@ function rawFromData(data: RawData) {
 }
 
 async function startChannel(options: {
-  execute: (command: OutboundCommand) => Promise<OutboundResult>;
+  execute: (command: OutboundCommand) => Promise<OutboundExecution>;
 }) {
   const port = await findFreePort();
   const config: ChannelConfig = {

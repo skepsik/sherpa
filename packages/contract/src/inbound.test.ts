@@ -129,6 +129,21 @@ void describe('inbound encode/decode', () => {
         }),
       },
       {
+        name: 'message без text',
+        raw: inboundWire({
+          place: { chatId: 'c', kind: 'direct' },
+          type: 'message',
+        }),
+      },
+      {
+        name: 'message с пустым text',
+        raw: inboundWire({
+          place: { chatId: 'c', kind: 'direct' },
+          text: '',
+          type: 'message',
+        }),
+      },
+      {
         name: 'старый type user_message',
         raw: inboundWire({
           place: { chatId: 'c', kind: 'direct' },
