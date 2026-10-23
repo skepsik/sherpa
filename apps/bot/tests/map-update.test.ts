@@ -2,11 +2,11 @@ import { encodeInbound, tryDecodeInbound } from '@sherpa/contract';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { AccessFilter } from './access';
-import type { TelegramUpdate } from './telegram-update';
+import type { AccessFilter } from '../src/access';
+import type { TelegramUpdate } from '../src/telegram-update';
 
-import { tryPackCallbackData } from './callback-data';
-import { mapTelegramUpdate } from './map-update';
+import { tryPackCallbackData } from '../src/callback-data';
+import { mapTelegramUpdate } from '../src/map-update';
 
 const access: AccessFilter = {
   allowedChatIds: new Set(['-200', '100']),

@@ -17,7 +17,7 @@ import {
   createChannelServer,
   findHandshakeToken,
   isChannelSecret,
-} from './channel';
+} from '../src/channel';
 
 const SECRET = 'test-channel-secret';
 

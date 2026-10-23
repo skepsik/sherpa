@@ -5,7 +5,7 @@ import {
   CALLBACK_DATA_MAX_BYTES,
   tryPackCallbackData,
   tryUnpackCallbackData,
-} from './callback-data';
+} from '../src/callback-data';
 
 void describe('callback-data pack/unpack', () => {
   void it('круг pack→unpack сохраняет пару', () => {

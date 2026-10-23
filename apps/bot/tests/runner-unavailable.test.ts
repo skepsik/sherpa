@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NotifyApi } from './runner-unavailable';
+import type { NotifyApi } from '../src/runner-unavailable';
 
 import {
   notifyRunnerUnavailable,
   RUNNER_UNAVAILABLE_TEXT,
-} from './runner-unavailable';
+} from '../src/runner-unavailable';
 
 void describe('notifyRunnerUnavailable', () => {
   void it('шлёт тот же текст в direct и в topic', async () => {

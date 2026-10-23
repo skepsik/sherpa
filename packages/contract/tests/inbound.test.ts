@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { InboundMessage, InboundQuestionAnswer } from './inbound';
+import type { InboundMessage, InboundQuestionAnswer } from '../src/inbound';
 
-import { encodeInbound, tryDecodeInbound } from './inbound';
-import { isDirectPlace, isTopicPlace } from './place';
+import { encodeInbound, tryDecodeInbound } from '../src/inbound';
+import { isDirectPlace, isTopicPlace } from '../src/place';
 
 function inboundWire(event: unknown, overrides: Record<string, unknown> = {}) {
   return JSON.stringify({

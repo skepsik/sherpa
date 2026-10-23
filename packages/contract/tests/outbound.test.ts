@@ -12,15 +12,15 @@ import type {
   OutboundSendOk,
   OutboundSendQuestion,
   OutboundSetStatus,
-} from './outbound';
+} from '../src/outbound';
 
 import {
   encodeOutbound,
   encodeOutboundResult,
   tryDecodeOutbound,
   tryDecodeOutboundResult,
-} from './outbound';
-import { isTopicPlace } from './place';
+} from '../src/outbound';
+import { isTopicPlace } from '../src/place';
 
 function outboundCommandWire(
   command: unknown,

@@ -2,14 +2,14 @@ import { GrammyError } from 'grammy';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { OutboundApi } from './outbound';
+import type { OutboundApi } from '../src/outbound';
 
-import { tryUnpackCallbackData } from './callback-data';
+import { tryUnpackCallbackData } from '../src/callback-data';
 import {
   executeOutbound,
   RATE_LIMIT_MAX_ATTEMPTS,
   TELEGRAM_TEXT_MAX_CHARS,
-} from './outbound';
+} from '../src/outbound';
 
 function grammyError(
   errorCode: number,
