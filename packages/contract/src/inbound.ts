@@ -1,52 +1,20 @@
-import type { Place } from './place';
-import type { WireDirection } from './wire';
+import type {
+  InboundDecoded,
+  InboundEnvelope,
+  InboundEvent,
+  InboundEventType,
+  InboundMessage,
+  InboundQuestionAnswer,
+} from './types';
 
 import { assertNever } from './assert';
 import { findPlace } from './place';
 import { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';
 
-export const INBOUND_EVENT_TYPES = ['message', 'question_answer'] as const;
-
-/** Успешный разбор inbound с провода. */
-export type InboundDecoded = {
-  event: InboundEvent;
-  eventId: string;
-};
-
-/**
- * Envelope inbound на проводе.
- * `eventId` — дедуп у раннера (для Telegram — строка из `update_id`).
- */
-export type InboundEnvelope = {
-  direction: Extract<WireDirection, 'inbound'>;
-  event: InboundEvent;
-  eventId: string;
-  v: typeof WIRE_VERSION;
-};
-
-export type InboundEvent = InboundMessage | InboundQuestionAnswer;
-
-export type InboundEventType = (typeof INBOUND_EVENT_TYPES)[number];
-
-/** Текст пользователя в месте разговора. */
-export type InboundMessage = {
-  place: Place;
-  /** Непустой текст сообщения. */
-  text: string;
-  type: 'message';
-};
-
-/**
- * Ответ на вопрос (нажатие inline-кнопки).
- * `requestId` — корреляция с исходящим `send_question`.
- * `data` — opaque payload выбора кнопки.
- */
-export type InboundQuestionAnswer = {
-  data: string;
-  place: Place;
-  requestId: string;
-  type: 'question_answer';
-};
+export const INBOUND_EVENT_TYPES = [
+  'message',
+  'question_answer',
+] as const satisfies readonly InboundEventType[];
 
 export function encodeInbound(eventId: string, event: InboundEvent): string {
   const envelope: InboundEnvelope = {

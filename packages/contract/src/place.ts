@@ -1,14 +1,6 @@
+import type { Place, TopicPlace } from './types';
+
 import { findNonEmptyString, isRecord } from './wire';
-
-/**
- * Место разговора на границе транспорт ↔ раннер:
- * личный чат (`direct`) или топик (`topic`). Идентификаторы opaque для транспорта.
- */
-export type Place =
-  | { chatId: string; kind: 'direct' }
-  | { chatId: string; kind: 'topic'; topicId: string };
-
-export type TopicPlace = Extract<Place, { kind: 'topic' }>;
 
 /** Мягкий разбор Place с провода. */
 export function findPlace(value: unknown): null | Place {

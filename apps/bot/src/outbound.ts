@@ -13,10 +13,11 @@ import type {
   OutboundSetStatus,
   Place,
 } from '@sherpa/contract';
-import type { Api } from 'grammy';
 
 import { assertNever } from '@sherpa/contract';
 import { GrammyError } from 'grammy';
+
+import type { InlineKeyboard, OutboundApi } from './types';
 
 import { tryPackCallbackData } from './callback-data';
 
@@ -28,14 +29,6 @@ export const TELEGRAM_TEXT_MAX_CHARS = 4096;
  * Между попытками — ожидание `retry_after` (или 1 с, если параметра нет).
  */
 export const RATE_LIMIT_MAX_ATTEMPTS = 3;
-
-/** Срез grammY Api, нужный для outbound. */
-export type OutboundApi = Pick<
-  Api,
-  'createForumTopic' | 'editMessageText' | 'sendMessage'
->;
-
-type InlineKeyboard = { callback_data: string; text: string }[][];
 
 /** Короткий fallback, если у отказа нет описания. */
 const UNKNOWN_ERROR_MESSAGE = 'unknown error';

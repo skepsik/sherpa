@@ -1,8 +1,4 @@
-/** Фильтр «свой» пользователь + allowlist чатов (личка / супергруппа). */
-export type AccessFilter = {
-  allowedChatIds: ReadonlySet<string>;
-  userId: string;
-};
+import type { AccessFilter } from './types';
 
 export function isAllowedSender(
   access: AccessFilter,

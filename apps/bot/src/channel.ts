@@ -12,27 +12,10 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import type { AcceptedInbound } from './map-update';
-
-/** Параметры bind и секрет канала (из env). */
-export type ChannelConfig = {
-  host: string;
-  path: string;
-  port: number;
-  secret: string;
-};
-
-export type ChannelServer = {
-  start: () => Promise<void>;
-  stop: () => Promise<void>;
-  /** Отдать inbound активному клиенту; `false` — нет соединения / send не удался. */
-  tryPublishInbound: (inbound: AcceptedInbound) => boolean;
-};
+import type { ChannelConfig, ChannelServer, LiveSocket } from './types';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const CLOSE_INVALID_WIRE = 1003;
-
-type LiveSocket = WebSocket & { isAlive: boolean };
 
 /**
  * WebSocket-слушатель: auth на upgrade (только header), одно активное соединение,

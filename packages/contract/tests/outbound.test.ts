@@ -12,7 +12,7 @@ import type {
   OutboundSendOk,
   OutboundSendQuestion,
   OutboundSetStatus,
-} from '../src/outbound';
+} from '../src/types';
 
 import {
   encodeOutbound,

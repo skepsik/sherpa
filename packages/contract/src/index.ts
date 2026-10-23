@@ -2,6 +2,26 @@
 
 export { assertNever } from './assert';
 
+export {
+  encodeInbound,
+  INBOUND_EVENT_TYPES,
+  tryDecodeInbound,
+} from './inbound';
+
+export {
+  encodeOutbound,
+  encodeOutboundResult,
+  OUTBOUND_COMMAND_TYPES,
+  OUTBOUND_ERROR_CODES,
+  OUTBOUND_RESULT_TYPES,
+  OUTBOUND_SEND_OK_COMMAND_TYPES,
+  OUTBOUND_STATUS_VALUES,
+  tryDecodeOutbound,
+  tryDecodeOutboundResult,
+} from './outbound';
+
+export { isDirectPlace, isTopicPlace } from './place';
+
 export type {
   InboundDecoded,
   InboundEnvelope,
@@ -9,14 +29,6 @@ export type {
   InboundEventType,
   InboundMessage,
   InboundQuestionAnswer,
-} from './inbound';
-export {
-  encodeInbound,
-  INBOUND_EVENT_TYPES,
-  tryDecodeInbound,
-} from './inbound';
-
-export type {
   OutboundCommand,
   OutboundCommandEnvelope,
   OutboundCommandType,
@@ -36,21 +48,10 @@ export type {
   OutboundSendQuestion,
   OutboundSetStatus,
   OutboundStatus,
-} from './outbound';
-export {
-  encodeOutbound,
-  encodeOutboundResult,
-  OUTBOUND_COMMAND_TYPES,
-  OUTBOUND_ERROR_CODES,
-  OUTBOUND_RESULT_TYPES,
-  OUTBOUND_SEND_OK_COMMAND_TYPES,
-  OUTBOUND_STATUS_VALUES,
-  tryDecodeOutbound,
-  tryDecodeOutboundResult,
-} from './outbound';
+  Place,
+  TopicPlace,
+  WireDirection,
+  WireVersion,
+} from './types';
 
-export type { Place, TopicPlace } from './place';
-export { isDirectPlace, isTopicPlace } from './place';
-
-export type { WireDirection } from './wire';
 export { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';

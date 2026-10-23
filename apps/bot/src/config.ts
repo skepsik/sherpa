@@ -1,11 +1,4 @@
-import type { AccessFilter } from './access';
-import type { ChannelConfig } from './channel';
-
-export type BotConfig = {
-  access: AccessFilter;
-  channel: ChannelConfig;
-  token: string;
-};
+import type { BotConfig, ChannelConfig } from './types';
 
 const DEFAULT_CHANNEL_HOST = '127.0.0.1';
 const DEFAULT_CHANNEL_PATH = '/v1/channel';

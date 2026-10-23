@@ -1,5 +1,24 @@
-import type { Place, TopicPlace } from './place';
-import type { WireDirection } from './wire';
+import type {
+  OutboundCommand,
+  OutboundCommandEnvelope,
+  OutboundCommandType,
+  OutboundCreateTopic,
+  OutboundCreateTopicOk,
+  OutboundError,
+  OutboundErrorCode,
+  OutboundInlineButton,
+  OutboundQuestionOk,
+  OutboundResolveQuestion,
+  OutboundResult,
+  OutboundResultEnvelope,
+  OutboundResultType,
+  OutboundSendMessage,
+  OutboundSendOk,
+  OutboundSendOkCommandType,
+  OutboundSendQuestion,
+  OutboundSetStatus,
+  OutboundStatus,
+} from './types';
 
 import { assertNever } from './assert';
 import { findPlace } from './place';
@@ -11,157 +30,32 @@ export const OUTBOUND_COMMAND_TYPES = [
   'resolve_question',
   'set_status',
   'create_topic',
-] as const;
+] as const satisfies readonly OutboundCommandType[];
 
 export const OUTBOUND_ERROR_CODES = [
   'create_topic_failed',
   'place_unavailable',
   'send_failed',
   'transport_rejected',
-] as const;
+] as const satisfies readonly OutboundErrorCode[];
 
 export const OUTBOUND_RESULT_TYPES = [
   'create_topic_ok',
   'error',
   'question_ok',
   'send_ok',
-] as const;
+] as const satisfies readonly OutboundResultType[];
 
 export const OUTBOUND_SEND_OK_COMMAND_TYPES = [
   'send_message',
   'resolve_question',
   'set_status',
-] as const;
+] as const satisfies readonly OutboundSendOkCommandType[];
 
-export const OUTBOUND_STATUS_VALUES = ['busy', 'idle'] as const;
-
-/**
- * Команда раннер → транспорт.
- * Нет project / access / cwd — маршрутизацию решает раннер.
- */
-export type OutboundCommand =
-  | OutboundCreateTopic
-  | OutboundResolveQuestion
-  | OutboundSendMessage
-  | OutboundSendQuestion
-  | OutboundSetStatus;
-
-/** Envelope команды на проводе. */
-export type OutboundCommandEnvelope = {
-  command: OutboundCommand;
-  direction: Extract<WireDirection, 'outbound'>;
-  /** Корреляция с `OutboundResultEnvelope.id`. */
-  id: string;
-  v: typeof WIRE_VERSION;
-};
-
-export type OutboundCommandType = (typeof OUTBOUND_COMMAND_TYPES)[number];
-
-/** Создать топик в супергруппе (forum). */
-export type OutboundCreateTopic = {
-  /** Чат супергруппы, где создать топик. */
-  chatId: string;
-  title: string;
-  type: 'create_topic';
-};
-
-/** Успешное создание топика: место для маршрутизации. */
-export type OutboundCreateTopicOk = {
-  place: TopicPlace;
-  type: 'create_topic_ok';
-};
-
-/**
- * Отказ транспорта: команда не исполнена.
- * `commandType` — тип команды, на которой отказ.
- * `message` — непустая строка (описание отказа).
- */
-export type OutboundError = {
-  code: OutboundErrorCode;
-  commandType: OutboundCommandType;
-  message: string;
-  type: 'error';
-};
-
-export type OutboundErrorCode = (typeof OUTBOUND_ERROR_CODES)[number];
-
-/** Кнопка: `data` станет `InboundQuestionAnswer.data` при нажатии. */
-export type OutboundInlineButton = {
-  data: string;
-  label: string;
-};
-
-/**
- * Успех `send_question`: id сообщения нужен для `resolve_question`.
- */
-export type OutboundQuestionOk = {
-  commandType: 'send_question';
-  messageId: string;
-  type: 'question_ok';
-};
-
-/**
- * Зафиксировать выбор на сообщении-вопросе: новый текст, кнопки снять.
- * Единственный edit на проводе.
- */
-export type OutboundResolveQuestion = {
-  messageId: string;
-  place: Place;
-  text: string;
-  type: 'resolve_question';
-};
-
-/** Исход команды транспорт → раннер. */
-export type OutboundResult =
-  OutboundCreateTopicOk | OutboundError | OutboundQuestionOk | OutboundSendOk;
-
-/** Envelope исхода на проводе (тот же `direction`, поле `result`). */
-export type OutboundResultEnvelope = {
-  direction: Extract<WireDirection, 'outbound'>;
-  /** Тот же id, что у команды. */
-  id: string;
-  result: OutboundResult;
-  v: typeof WIRE_VERSION;
-};
-
-export type OutboundResultType = (typeof OUTBOUND_RESULT_TYPES)[number];
-
-/** Отправить текст в место (личка или топик). */
-export type OutboundSendMessage = {
-  place: Place;
-  text: string;
-  type: 'send_message';
-};
-
-/** Успех `send_message` / `resolve_question` / `set_status` — без `messageId`. */
-export type OutboundSendOk = {
-  commandType: OutboundSendOkCommandType;
-  type: 'send_ok';
-};
-
-export type OutboundSendOkCommandType =
-  (typeof OUTBOUND_SEND_OK_COMMAND_TYPES)[number];
-
-/**
- * Вопрос с inline-кнопками.
- * `requestId` + `buttons[].data` совместимы с inbound `question_answer`.
- */
-export type OutboundSendQuestion = {
-  buttons: OutboundInlineButton[];
-  place: Place;
-  requestId: string;
-  text: string;
-  type: 'send_question';
-};
-
-/** Статус индикатора в Place; исполнение на транспорте — заглушка. */
-export type OutboundSetStatus = {
-  place: Place;
-  status: OutboundStatus;
-  type: 'set_status';
-};
-
-export type OutboundStatus = (typeof OUTBOUND_STATUS_VALUES)[number];
+export const OUTBOUND_STATUS_VALUES = [
+  'busy',
+  'idle',
+] as const satisfies readonly OutboundStatus[];
 
 export function encodeOutbound(id: string, command: OutboundCommand): string {
   const envelope: OutboundCommandEnvelope = {

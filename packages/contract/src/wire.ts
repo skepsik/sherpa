@@ -1,7 +1,7 @@
-/** Версия envelope на проводе (inbound и outbound — один стиль). */
-export const WIRE_VERSION = 1 as const;
+import type { WireVersion } from './types';
 
-export type WireDirection = 'inbound' | 'outbound';
+/** Версия envelope на проводе (inbound и outbound — один стиль). */
+export const WIRE_VERSION = 1 satisfies WireVersion;
 
 export function findNonEmptyString(value: unknown): null | string {
   if (typeof value !== 'string' || value.length === 0) return null;

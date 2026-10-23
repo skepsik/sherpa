@@ -1,19 +1,13 @@
 import { Bot } from 'grammy';
 
-import type { BotConfig } from './config';
-import type { AcceptedInbound } from './map-update';
-import type { TelegramUpdate } from './telegram-update';
+import type {
+  BotConfig,
+  OnInbound,
+  TelegramReceiver,
+  TelegramUpdate,
+} from './types';
 
 import { mapTelegramUpdate } from './map-update';
-
-/** Сторона канала (issue-2-3) подписывается на готовое inbound. */
-export type OnInbound = (inbound: AcceptedInbound) => Promise<void> | void;
-
-export type TelegramReceiver = {
-  bot: Bot;
-  start: () => Promise<void>;
-  stop: () => Promise<void>;
-};
 
 /**
  * Long-polling приём Update → фильтр/маппинг → `onInbound`.

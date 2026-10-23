@@ -2,7 +2,7 @@ import { GrammyError } from 'grammy';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { OutboundApi } from '../src/outbound';
+import type { OutboundApi } from '../src/types';
 
 import { tryUnpackCallbackData } from '../src/callback-data';
 import {

@@ -2,8 +2,8 @@ import { encodeInbound, tryDecodeInbound } from '@sherpa/contract';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { AccessFilter } from '../src/access';
-import type { TelegramUpdate } from '../src/telegram-update';
+import type { AccessFilter } from '../src/types';
+import type { TelegramUpdate } from '../src/types';
 
 import { tryPackCallbackData } from '../src/callback-data';
 import { mapTelegramUpdate } from '../src/map-update';

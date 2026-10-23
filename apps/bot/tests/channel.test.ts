@@ -12,8 +12,9 @@ import { createServer } from 'node:http';
 import { after, describe, it } from 'node:test';
 import WebSocket from 'ws';
 
+import type { ChannelConfig } from '../src/types';
+
 import {
-  type ChannelConfig,
   createChannelServer,
   findHandshakeToken,
   isChannelSecret,

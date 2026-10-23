@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NotifyApi } from '../src/runner-unavailable';
+import type { NotifyApi } from '../src/types';
 
 import {
   notifyRunnerUnavailable,
