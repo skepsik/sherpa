@@ -1,50 +1,86 @@
 ---
-description: Work-issue — создание, title/labels/relations; тело — skill cold-start
+description: Work-issue — локальные файлы в issues/; тело — skill cold-start
 alwaysApply: false
 ---
 
 # Issues
 
+Канон work-issue — **локальные файлы** в `issues/`. GitHub Issues / board #6 — опционально позже; пока не дублировать без команды владельца.
+
+## Имя файла
+
+```
+issues/issue-<P>-<K>.md
+```
+
+`<P>` — номер эпика из `docs/epics.md`. `<K>` — порядковый номер задачи внутри эпика.
+
+Пример: `issues/issue-1-2.md`. Id в промптах: `issue-<P>-<K>`.
+
+## Фронтматтер
+
+Обязательное поле:
+
+```yaml
+---
+status: todo | done
+---
+```
+
+- `todo` — не готова / в работе.
+- `done` — gate ok, перед коммитом задачи (`agent.mdc`).
+
+**Предусловия** сиблингов проверяются по `status: done` в FM файла-блокера (не по «кажется сделано»).
+
+`status: done` ставит **`@agent` на gate** (не `@work`).
+
 ## Постановка (тело)
 
-Перед созданием или правкой тела issue — skill **`work-issue-cold-start-spec`**:
+Перед созданием или правкой тела — skill **`work-issue-cold-start-spec`**:
 
 `.cursor/skills/work-issue-cold-start-spec/SKILL.md`
 
-Дальше по skill: `category-content.md` и проектный `adapter.md` (тот же каталог).
+Дальше: `category-content.md` и `adapter.md` в том же каталоге.
 
-Публичная поверхность / runtime-deps, которых не было дословно в постановке →
-механическое «Сверх постановки» (`coder-finalize.mdc`) → disposition на gate
-(штатный путь в канон).
+Публичная поверхность / runtime-deps вне дословной постановки → «Сверх постановки» (`coder-finalize.mdc`) → disposition на gate.
 
-Продукт — в эпике. На нарезке work-issue всплыл продукт вне эпика —
-эскалация владельцу до кодера (`work-issue-cold-start-spec`).
+Продукт — в эпике. На нарезке всплыл продукт вне эпика — эскалация владельцу до кодера.
+
+## Отчёты в файле (не gh)
+
+В **конец** того же md:
+
+```markdown
+## Реализация issue-<P>-<K>
+
+### Сверх постановки
+…
+
+### Слои
+…
+
+## Gate issue-<P>-<K>
+
+**В канон:** …
+**Оставили:** …
+```
+
+- **Реализация** — `@coder` на finalize (`coder-finalize.mdc`); если не дописал — `@work` / `@agent`.
+- **Gate** — `@agent` после ok.
+
+Повторный finalize/gate — **редактировать** существующие секции с этими заголовками, не плодить вторые. `gh issue comment` не использовать.
 
 ## Создание
 
-`.cursor/scripts/gh-create-work-issue.sh` — issue и relations (`--parent`,
-`--blocked-by`, `--blocking`, `-l`, …). Детали флагов — skill `gh-workflow`.
-Скрипт кладёт issue на board [sherpa](https://github.com/users/skepsik/projects/6) (#6).
+Новый файл в `issues/` (Write tool). Title = заголовок `# …` в теле.
 
-```bash
-.cursor/scripts/gh-create-work-issue.sh -t "…" -F body.md
-.cursor/scripts/gh-create-work-issue.sh -t "…" -F body.md --parent <N> --blocked-by <N>
-```
+GitHub (когда владелец явно попросит): `.cursor/scripts/gh-create-work-issue.sh` + board #6 — skill `gh-workflow`.
 
-## Title, labels, relations
+## Labels / Scope (ориентиры)
 
-|                  | Правило                                                                 |
-| ---------------- | ----------------------------------------------------------------------- |
-| **Title**        | Суть одной фразой: `Bot — эхо в личку`                                  |
-| **Labels тип**   | Обычно без type-label. `refactor` / `bug` / `discovery` — по смыслу     |
-| **Labels область** | По смыслу (0..n): bot, runner, packages, infra, docs                  |
-| **Relations**    | Через скрипт: `--parent`, `--blocked-by`, `--blocking`                  |
+Области: bot, runner, packages, infra, docs.
 
-## Scope в комментарии реализации
-
-```markdown
-Scope: apps/runner/
-```
+В постановке — блок Scope (пути). В отчёте реализации — таблица слоёв из diff.
 
 ## Запуск
 

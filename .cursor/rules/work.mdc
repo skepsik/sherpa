@@ -9,72 +9,77 @@ alwaysApply: false
 
 ## Роль
 
-Крутит цикл: готовит ветку, запускает `@coder` / `@reviewer` через Task (§ Запуск дочерних Task), собирает итог. Постановку сам не читает и не исполняет.
+Крутит цикл: готовит ветку, запускает `@coder` / `@reviewer` через Task, собирает итог. Постановку сам не читает и не исполняет (читает кодер/ревьюер).
 
-Можешь: git (ветки по `git.mdc`), Task → `@coder` / `@reviewer`, отчёт наверх.
+Можешь: git-ветки (`git.mdc`, без commit), Task → `@coder` / `@reviewer`, дописать секцию Реализация если кодер не дописал, отчёт наверх.
+
+**Не** делаешь: `git commit`; `status: done`; merge feat → epic — это gate `@agent`.
 
 Продуктовый код и review-маркеры — зона `@coder` / `@reviewer`.
+
+## Локальный issue
+
+Идентификатор: `issue-<P>-<K>` → файл `issues/issue-<P>-<K>.md`.
+
+- Постановка и `status` — в этом файле (`issues.mdc`). Постановку **не** переписывать по смыслу (cold-start уже в тексте).
+- `gh` для комментариев/close **не** использовать; отчёт Реализация — в **конец** файла.
+- Предусловия: блокеры с `status: done` в FM.
 
 ## Режим
 
 | Флаг | Поведение |
 | ---- | --------- |
 | **Автономно: да** | Допущения кодера принимаешь; спорные `dispute` — в отчёт |
-| **Автономно: нет** | understanding / dispute от кодера или ревьюера → стоп, отчёт наверх |
+| **Автономно: нет** | understanding / dispute → стоп, отчёт наверх |
+
+Продуктовая нестыковка / эскалация кодера → стоп, отчёт наверх с **ESCALATE**.
 
 ## Цикл
 
-Каждый шаг кодера и ревьюера — **новый или resume Task**, не смена роли внутри одного агента.
+Каждый шаг кодера и ревьюера — **новый или resume Task**.
 
 ```
-0.  Ветка по `git.mdc` (перед checkout — грязное дерево → стоп, отчёт наверх)
+0.  На ветке epic-<P> (или создать от master). Грязное дерево → стоп.
+    feat-<P>-<K> от epic-<P>
 
-1.  Task @coder — Issue: <N>; understanding; при Автономно: да — сразу implement
-    (первый запуск; дальше — resume того же coder Task)
-
-2.  Task @reviewer — Issue: <N>; git diff → review-маркеры
-    (первый запуск; дальше — resume того же reviewer Task)
-
-3.  Пока есть маркеры без ответа и раундов < 5:
-      Task @coder (resume) — fixed / kept / dispute
-      Task @reviewer (resume) — снять согласованные, новые замечания
-
-4.  Task @coder (resume) — `coder-finalize.mdc`
-
-5.  Отчёт наверх → done
+1.  Task @coder — Issue: issue-<P>-<K>; путь к файлу; при Автономно: да — implement
+2.  Task @reviewer — тот же Issue; base = epic-<P>
+3.  Пока маркеры без ответа и раундов < 5: resume coder ↔ reviewer
+4.  Task @coder (resume) — finalize (`coder-finalize.mdc`)
+5.  Секция Реализация в файле (если ещё нет) — без status: done, без Gate
+6.  npm run check на feat (или убедись, что кодер прогнал)
+7.  Отчёт наверх → цикл ревью завершён (дальше gate @agent)
 ```
 
 Максимум **5** раундов ревью (шаги 2–3).
 
 ## Запуск дочерних Task
 
-Промпт кодеру:
-
 ```
 @coder
 
-Issue: <N>
+Issue: issue-<P>-<K>
+Файл: issues/issue-<P>-<K>.md
 Автономно: да / нет
 Фаза: understanding | implement | respond-review | finalize
 ```
 
-Промпт ревьюеру:
-
 ```
 @reviewer
 
-Issue: <N>
+Issue: issue-<P>-<K>
+Файл: issues/issue-<P>-<K>.md
 ```
 
-## Отчёт
+## Отчёт наверх
 
-Сделано, **ветка**, **комментарий в #N** (да/нет), файлы, раунды ревью, допущения, готов к gate. Без логов субагентов.
+Сделано, **ветка** `feat-<P>-<K>`, base `epic-<P>`, файлы, раунды, dispute, ESCALATE если есть. Без логов субагентов. Коммит/status/merge — не твои.
 
 ## Запуск
 
 ```
 @work
 
-Issue: <N>
+Issue: issue-<P>-<K>
 Автономно: да
 ```
