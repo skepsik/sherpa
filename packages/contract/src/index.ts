@@ -7,9 +7,14 @@ export type {
   InboundDecoded,
   InboundEnvelope,
   InboundEvent,
+  InboundEventType,
   InboundUserMessage,
 } from './inbound';
-export { encodeInbound, tryDecodeInbound } from './inbound';
+export {
+  encodeInbound,
+  INBOUND_EVENT_TYPES,
+  tryDecodeInbound,
+} from './inbound';
 
 export type {
   OutboundCommand,
@@ -23,6 +28,7 @@ export type {
   OutboundInlineButton,
   OutboundResult,
   OutboundResultEnvelope,
+  OutboundResultType,
   OutboundSendButtons,
   OutboundSendOk,
   OutboundSendOkCommandType,
@@ -33,6 +39,7 @@ export {
   encodeOutboundResult,
   OUTBOUND_COMMAND_TYPES,
   OUTBOUND_ERROR_CODES,
+  OUTBOUND_RESULT_TYPES,
   OUTBOUND_SEND_OK_COMMAND_TYPES,
   tryDecodeOutbound,
   tryDecodeOutboundResult,

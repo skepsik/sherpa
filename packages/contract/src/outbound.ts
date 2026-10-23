@@ -19,6 +19,12 @@ export const OUTBOUND_ERROR_CODES = [
   'transport_rejected',
 ] as const;
 
+export const OUTBOUND_RESULT_TYPES = [
+  'create_topic_ok',
+  'error',
+  'send_ok',
+] as const;
+
 export const OUTBOUND_SEND_OK_COMMAND_TYPES = [
   'send_text',
   'send_buttons',
@@ -105,6 +111,8 @@ export type OutboundResultEnvelope = {
   result: OutboundResult;
   v: typeof WIRE_VERSION;
 };
+
+export type OutboundResultType = (typeof OUTBOUND_RESULT_TYPES)[number];
 
 /**
  * Сообщение с inline-кнопками (permission / подтверждение).
@@ -293,10 +301,17 @@ function findOutboundResultEnvelope(
 
 function findResult(value: unknown): null | OutboundResult {
   if (!isRecord(value)) return null;
-  if (value.type === 'send_ok') return findSendOk(value);
-  if (value.type === 'create_topic_ok') return findCreateTopicOk(value);
-  if (value.type === 'error') return findError(value);
-  return null;
+  if (!isResultType(value.type)) return null;
+  switch (value.type) {
+    case 'create_topic_ok':
+      return findCreateTopicOk(value);
+    case 'error':
+      return findError(value);
+    case 'send_ok':
+      return findSendOk(value);
+    default:
+      return assertNever(value.type);
+  }
 }
 
 function findSendButtons(
@@ -339,6 +354,13 @@ function isErrorCode(value: unknown): value is OutboundErrorCode {
   return (
     typeof value === 'string' &&
     (OUTBOUND_ERROR_CODES as readonly string[]).includes(value)
+  );
+}
+
+function isResultType(value: unknown): value is OutboundResultType {
+  return (
+    typeof value === 'string' &&
+    (OUTBOUND_RESULT_TYPES as readonly string[]).includes(value)
   );
 }
 

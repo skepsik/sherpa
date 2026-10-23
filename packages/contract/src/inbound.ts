@@ -1,8 +1,11 @@
 import type { Place } from './place';
 import type { WireDirection } from './wire';
 
+import { assertNever } from './assert';
 import { findPlace } from './place';
 import { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';
+
+export const INBOUND_EVENT_TYPES = ['callback', 'user_message'] as const;
 
 /**
  * Нажатие inline-кнопки.
@@ -35,6 +38,8 @@ export type InboundEnvelope = {
 };
 
 export type InboundEvent = InboundCallback | InboundUserMessage;
+
+export type InboundEventType = (typeof INBOUND_EVENT_TYPES)[number];
 
 /** Сообщение пользователя в месте разговора. */
 export type InboundUserMessage = {
@@ -77,9 +82,15 @@ function findCallback(value: Record<string, unknown>): InboundCallback | null {
 
 function findEventBody(value: unknown): InboundEvent | null {
   if (!isRecord(value)) return null;
-  if (value.type === 'user_message') return findUserMessage(value);
-  if (value.type === 'callback') return findCallback(value);
-  return null;
+  if (!isEventType(value.type)) return null;
+  switch (value.type) {
+    case 'callback':
+      return findCallback(value);
+    case 'user_message':
+      return findUserMessage(value);
+    default:
+      return assertNever(value.type);
+  }
 }
 
 function findInboundEnvelope(value: unknown): InboundDecoded | null {
@@ -101,4 +112,11 @@ function findUserMessage(
   if (value.text === undefined) return { place, type: 'user_message' };
   if (typeof value.text !== 'string') return null;
   return { place, text: value.text, type: 'user_message' };
+}
+
+function isEventType(value: unknown): value is InboundEventType {
+  return (
+    typeof value === 'string' &&
+    (INBOUND_EVENT_TYPES as readonly string[]).includes(value)
+  );
 }
