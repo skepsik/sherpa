@@ -124,6 +124,18 @@ void describe('outbound encode/decode', () => {
       tryDecodeOutbound(encodeOutbound('c-edit2', editTextOnly)),
       { command: editTextOnly, id: 'c-edit2' },
     );
+    const editReplace: OutboundEditText = {
+      buttons: [{ data: 'retry', label: 'Ещё' }],
+      messageId: 'msg-9',
+      place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
+      requestId: 'perm-2',
+      text: 'ещё раз?',
+      type: 'edit_text',
+    };
+    assert.deepEqual(
+      tryDecodeOutbound(encodeOutbound('c-edit3', editReplace)),
+      { command: editReplace, id: 'c-edit3' },
+    );
   });
 
   void it('roundtrip отказ транспорта — все OutboundErrorCode', () => {
