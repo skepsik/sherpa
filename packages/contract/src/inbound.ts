@@ -2,7 +2,7 @@ import type { Place } from './place';
 import type { WireDirection } from './wire';
 
 import { findPlace } from './place';
-import { isRecord, WIRE_VERSION } from './wire';
+import { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';
 
 /**
  * Нажатие inline-кнопки.
@@ -17,10 +17,20 @@ export type InboundCallback = {
   type: 'callback';
 };
 
-/** Envelope inbound на проводе. */
+/** Успешный разбор inbound с провода. */
+export type InboundDecoded = {
+  event: InboundEvent;
+  eventId: string;
+};
+
+/**
+ * Envelope inbound на проводе.
+ * `eventId` — идемпотентность при at-least-once (напр. Telegram `update_id`).
+ */
 export type InboundEnvelope = {
   direction: Extract<WireDirection, 'inbound'>;
   event: InboundEvent;
+  eventId: string;
   v: typeof WIRE_VERSION;
 };
 
@@ -34,39 +44,35 @@ export type InboundUserMessage = {
   type: 'user_message';
 };
 
-export function encodeInbound(event: InboundEvent): string {
+export function encodeInbound(eventId: string, event: InboundEvent): string {
   const envelope: InboundEnvelope = {
     direction: 'inbound',
     event,
+    eventId,
     v: WIRE_VERSION,
   };
   return JSON.stringify(envelope);
 }
 
 /** Мягкий разбор: невалидный wire → `null` (событие не принимать). */
-export function tryDecodeInbound(raw: string): InboundEvent | null {
+export function tryDecodeInbound(raw: string): InboundDecoded | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
     return null;
   }
-  return findInboundEvent(parsed);
+  return findInboundEnvelope(parsed);
 }
 
 function findCallback(value: Record<string, unknown>): InboundCallback | null {
   const place = findPlace(value.place);
   if (!place) return null;
-  if (typeof value.data !== 'string' || value.data.length === 0) return null;
-  if (typeof value.requestId !== 'string' || value.requestId.length === 0) {
-    return null;
-  }
-  return {
-    data: value.data,
-    place,
-    requestId: value.requestId,
-    type: 'callback',
-  };
+  const data = findNonEmptyString(value.data);
+  if (!data) return null;
+  const requestId = findNonEmptyString(value.requestId);
+  if (!requestId) return null;
+  return { data, place, requestId, type: 'callback' };
 }
 
 function findEventBody(value: unknown): InboundEvent | null {
@@ -76,11 +82,15 @@ function findEventBody(value: unknown): InboundEvent | null {
   return null;
 }
 
-function findInboundEvent(value: unknown): InboundEvent | null {
+function findInboundEnvelope(value: unknown): InboundDecoded | null {
   if (!isRecord(value)) return null;
   if (value.v !== WIRE_VERSION) return null;
   if (value.direction !== 'inbound') return null;
-  return findEventBody(value.event);
+  const eventId = findNonEmptyString(value.eventId);
+  if (!eventId) return null;
+  const event = findEventBody(value.event);
+  if (!event) return null;
+  return { event, eventId };
 }
 
 function findUserMessage(

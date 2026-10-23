@@ -1,8 +1,29 @@
 import type { Place, TopicPlace } from './place';
 import type { WireDirection } from './wire';
 
+import { assertNever } from './assert';
 import { findPlace } from './place';
-import { isRecord, WIRE_VERSION } from './wire';
+import { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';
+
+export const OUTBOUND_COMMAND_TYPES = [
+  'send_text',
+  'send_buttons',
+  'edit_text',
+  'create_topic',
+] as const;
+
+export const OUTBOUND_ERROR_CODES = [
+  'create_topic_failed',
+  'place_unavailable',
+  'send_failed',
+  'transport_rejected',
+] as const;
+
+export const OUTBOUND_SEND_OK_COMMAND_TYPES = [
+  'send_text',
+  'send_buttons',
+  'edit_text',
+] as const;
 
 /**
  * Команда раннер → транспорт.
@@ -22,6 +43,8 @@ export type OutboundCommandEnvelope = {
   id: string;
   v: typeof WIRE_VERSION;
 };
+
+export type OutboundCommandType = (typeof OUTBOUND_COMMAND_TYPES)[number];
 
 /** Создать топик в супергруппе (forum). */
 export type OutboundCreateTopic = {
@@ -57,16 +80,12 @@ export type OutboundEditText = {
 export type OutboundError = {
   code: OutboundErrorCode;
   /** Тип исходной команды, если известен. */
-  commandType?: OutboundCommand['type'];
+  commandType?: OutboundCommandType;
   message?: string;
   type: 'error';
 };
 
-export type OutboundErrorCode =
-  | 'create_topic_failed'
-  | 'place_unavailable'
-  | 'send_failed'
-  | 'transport_rejected';
+export type OutboundErrorCode = (typeof OUTBOUND_ERROR_CODES)[number];
 
 /** Кнопка: `data` станет `InboundCallback.data` при нажатии. */
 export type OutboundInlineButton = {
@@ -101,11 +120,14 @@ export type OutboundSendButtons = {
 
 /** Успешная отправка или правка текста/кнопок. */
 export type OutboundSendOk = {
-  commandType: 'edit_text' | 'send_buttons' | 'send_text';
+  commandType: OutboundSendOkCommandType;
   /** Id сообщения в транспорте (для последующего edit_text). */
   messageId: string;
   type: 'send_ok';
 };
+
+export type OutboundSendOkCommandType =
+  (typeof OUTBOUND_SEND_OK_COMMAND_TYPES)[number];
 
 /** Отправить текст в место (личка или топик). */
 export type OutboundSendText = {
@@ -168,30 +190,40 @@ function findButtons(value: unknown): null | OutboundInlineButton[] {
   const buttons: OutboundInlineButton[] = [];
   for (const item of value) {
     if (!isRecord(item)) return null;
-    if (typeof item.label !== 'string' || item.label.length === 0) return null;
-    if (typeof item.data !== 'string' || item.data.length === 0) return null;
-    buttons.push({ data: item.data, label: item.label });
+    const label = findNonEmptyString(item.label);
+    if (!label) return null;
+    const data = findNonEmptyString(item.data);
+    if (!data) return null;
+    buttons.push({ data, label });
   }
   return buttons;
 }
 
 function findCommand(value: unknown): null | OutboundCommand {
   if (!isRecord(value)) return null;
-  if (value.type === 'send_text') return findSendText(value);
-  if (value.type === 'send_buttons') return findSendButtons(value);
-  if (value.type === 'edit_text') return findEditText(value);
-  if (value.type === 'create_topic') return findCreateTopic(value);
-  return null;
+  if (!isCommandType(value.type)) return null;
+  switch (value.type) {
+    case 'create_topic':
+      return findCreateTopic(value);
+    case 'edit_text':
+      return findEditText(value);
+    case 'send_buttons':
+      return findSendButtons(value);
+    case 'send_text':
+      return findSendText(value);
+    default:
+      return assertNever(value.type);
+  }
 }
 
 function findCreateTopic(
   value: Record<string, unknown>,
 ): null | OutboundCreateTopic {
-  if (typeof value.chatId !== 'string' || value.chatId.length === 0) {
-    return null;
-  }
-  if (typeof value.title !== 'string' || value.title.length === 0) return null;
-  return { chatId: value.chatId, title: value.title, type: 'create_topic' };
+  const chatId = findNonEmptyString(value.chatId);
+  if (!chatId) return null;
+  const title = findNonEmptyString(value.title);
+  if (!title) return null;
+  return { chatId, title, type: 'create_topic' };
 }
 
 function findCreateTopicOk(
@@ -205,27 +237,16 @@ function findCreateTopicOk(
 function findEditText(value: Record<string, unknown>): null | OutboundEditText {
   const place = findPlace(value.place);
   if (!place) return null;
-  if (typeof value.messageId !== 'string' || value.messageId.length === 0) {
-    return null;
-  }
-  if (typeof value.text !== 'string' || value.text.length === 0) return null;
+  const messageId = findNonEmptyString(value.messageId);
+  if (!messageId) return null;
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
   if (value.buttons === undefined) {
-    return {
-      messageId: value.messageId,
-      place,
-      text: value.text,
-      type: 'edit_text',
-    };
+    return { messageId, place, text, type: 'edit_text' };
   }
   const buttons = findButtons(value.buttons);
   if (!buttons) return null;
-  return {
-    buttons,
-    messageId: value.messageId,
-    place,
-    text: value.text,
-    type: 'edit_text',
-  };
+  return { buttons, messageId, place, text, type: 'edit_text' };
 }
 
 function findError(value: Record<string, unknown>): null | OutboundError {
@@ -248,11 +269,12 @@ function findOutboundCommandEnvelope(
   if (!isRecord(value)) return null;
   if (value.v !== WIRE_VERSION) return null;
   if (value.direction !== 'outbound') return null;
-  if (typeof value.id !== 'string' || value.id.length === 0) return null;
+  const id = findNonEmptyString(value.id);
+  if (!id) return null;
   if ('result' in value && value.result !== undefined) return null;
   const command = findCommand(value.command);
   if (!command) return null;
-  return { command, id: value.id };
+  return { command, id };
 }
 
 function findOutboundResultEnvelope(
@@ -261,11 +283,12 @@ function findOutboundResultEnvelope(
   if (!isRecord(value)) return null;
   if (value.v !== WIRE_VERSION) return null;
   if (value.direction !== 'outbound') return null;
-  if (typeof value.id !== 'string' || value.id.length === 0) return null;
+  const id = findNonEmptyString(value.id);
+  if (!id) return null;
   if ('command' in value && value.command !== undefined) return null;
   const result = findResult(value.result);
   if (!result) return null;
-  return { id: value.id, result };
+  return { id, result };
 }
 
 function findResult(value: unknown): null | OutboundResult {
@@ -281,60 +304,49 @@ function findSendButtons(
 ): null | OutboundSendButtons {
   const place = findPlace(value.place);
   if (!place) return null;
-  if (typeof value.text !== 'string' || value.text.length === 0) return null;
-  if (typeof value.requestId !== 'string' || value.requestId.length === 0) {
-    return null;
-  }
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
+  const requestId = findNonEmptyString(value.requestId);
+  if (!requestId) return null;
   const buttons = findButtons(value.buttons);
   if (!buttons || buttons.length === 0) return null;
-  return {
-    buttons,
-    place,
-    requestId: value.requestId,
-    text: value.text,
-    type: 'send_buttons',
-  };
+  return { buttons, place, requestId, text, type: 'send_buttons' };
 }
 
 function findSendOk(value: Record<string, unknown>): null | OutboundSendOk {
-  if (
-    value.commandType !== 'send_text' &&
-    value.commandType !== 'send_buttons' &&
-    value.commandType !== 'edit_text'
-  ) {
-    return null;
-  }
-  if (typeof value.messageId !== 'string' || value.messageId.length === 0) {
-    return null;
-  }
-  return {
-    commandType: value.commandType,
-    messageId: value.messageId,
-    type: 'send_ok',
-  };
+  if (!isSendOkCommandType(value.commandType)) return null;
+  const messageId = findNonEmptyString(value.messageId);
+  if (!messageId) return null;
+  return { commandType: value.commandType, messageId, type: 'send_ok' };
 }
 
 function findSendText(value: Record<string, unknown>): null | OutboundSendText {
   const place = findPlace(value.place);
   if (!place) return null;
-  if (typeof value.text !== 'string' || value.text.length === 0) return null;
-  return { place, text: value.text, type: 'send_text' };
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
+  return { place, text, type: 'send_text' };
 }
 
-function isCommandType(value: unknown): value is OutboundCommand['type'] {
+function isCommandType(value: unknown): value is OutboundCommandType {
   return (
-    value === 'send_text' ||
-    value === 'send_buttons' ||
-    value === 'edit_text' ||
-    value === 'create_topic'
+    typeof value === 'string' &&
+    (OUTBOUND_COMMAND_TYPES as readonly string[]).includes(value)
   );
 }
 
 function isErrorCode(value: unknown): value is OutboundErrorCode {
   return (
-    value === 'send_failed' ||
-    value === 'create_topic_failed' ||
-    value === 'place_unavailable' ||
-    value === 'transport_rejected'
+    typeof value === 'string' &&
+    (OUTBOUND_ERROR_CODES as readonly string[]).includes(value)
+  );
+}
+
+function isSendOkCommandType(
+  value: unknown,
+): value is OutboundSendOkCommandType {
+  return (
+    typeof value === 'string' &&
+    (OUTBOUND_SEND_OK_COMMAND_TYPES as readonly string[]).includes(value)
   );
 }

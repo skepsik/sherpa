@@ -7,19 +7,25 @@ import { encodeInbound, tryDecodeInbound } from './inbound';
 import { isDirectPlace, isTopicPlace } from './place';
 
 function inboundWire(event: unknown, overrides: Record<string, unknown> = {}) {
-  return JSON.stringify({ direction: 'inbound', event, v: 1, ...overrides });
+  return JSON.stringify({
+    direction: 'inbound',
+    event,
+    eventId: 'upd-1',
+    v: 1,
+    ...overrides,
+  });
 }
 
 void describe('inbound encode/decode', () => {
-  void it('roundtrip user_message в личке', () => {
+  void it('roundtrip user_message в личке с eventId', () => {
     const event: InboundUserMessage = {
       place: { chatId: 'chat-1', kind: 'direct' },
       text: 'привет',
       type: 'user_message',
     };
-    const decoded = tryDecodeInbound(encodeInbound(event));
-    assert.deepEqual(decoded, event);
-    assert.ok(decoded && isDirectPlace(decoded.place));
+    const decoded = tryDecodeInbound(encodeInbound('42', event));
+    assert.deepEqual(decoded, { event, eventId: '42' });
+    assert.ok(decoded && isDirectPlace(decoded.event.place));
   });
 
   void it('roundtrip callback в топике', () => {
@@ -29,99 +35,102 @@ void describe('inbound encode/decode', () => {
       requestId: 'perm-42',
       type: 'callback',
     };
-    const decoded = tryDecodeInbound(encodeInbound(event));
-    assert.deepEqual(decoded, event);
-    assert.ok(decoded && isTopicPlace(decoded.place));
+    const decoded = tryDecodeInbound(encodeInbound('99', event));
+    assert.deepEqual(decoded, { event, eventId: '99' });
+    assert.ok(decoded && isTopicPlace(decoded.event.place));
   });
 
   void it('отказ на невалидный wire', () => {
-    assert.equal(tryDecodeInbound('{'), null);
-    assert.equal(
-      tryDecodeInbound(
-        JSON.stringify({ direction: 'outbound', event: {}, v: 1 }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+    const cases: { name: string; raw: string }[] = [
+      { name: 'битый json', raw: '{' },
+      {
+        name: 'direction outbound',
+        raw: JSON.stringify({
+          direction: 'outbound',
+          event: {},
+          eventId: '1',
+          v: 1,
+        }),
+      },
+      {
+        name: 'нет eventId',
+        raw: inboundWire(
+          { place: { chatId: 'c', kind: 'direct' }, type: 'user_message' },
+          { eventId: undefined },
+        ),
+      },
+      {
+        name: 'пустой eventId',
+        raw: inboundWire(
+          { place: { chatId: 'c', kind: 'direct' }, type: 'user_message' },
+          { eventId: '' },
+        ),
+      },
+      {
+        name: 'callback без requestId',
+        raw: inboundWire({
           data: 'allow',
           place: { chatId: 'c', kind: 'direct' },
           type: 'callback',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+      },
+      {
+        name: 'пустой chatId',
+        raw: inboundWire({
           place: { chatId: '', kind: 'direct' },
           type: 'user_message',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+      },
+      {
+        name: 'topic без topicId',
+        raw: inboundWire({
           place: { chatId: 'c', kind: 'topic' },
           type: 'user_message',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+      },
+      {
+        name: 'пустой topicId',
+        raw: inboundWire({
           place: { chatId: 'c', kind: 'topic', topicId: '' },
           type: 'user_message',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire(
-          {
-            place: { chatId: 'c', kind: 'direct' },
-            type: 'user_message',
-          },
+      },
+      {
+        name: 'версия 2',
+        raw: inboundWire(
+          { place: { chatId: 'c', kind: 'direct' }, type: 'user_message' },
           { v: 2 },
         ),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+      },
+      {
+        name: 'пустой data',
+        raw: inboundWire({
           data: '',
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           type: 'callback',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+      },
+      {
+        name: 'пустой requestId',
+        raw: inboundWire({
           data: 'allow',
           place: { chatId: 'c', kind: 'direct' },
           requestId: '',
           type: 'callback',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeInbound(
-        inboundWire({
+      },
+      {
+        name: 'text не строка',
+        raw: inboundWire({
           place: { chatId: 'c', kind: 'direct' },
           text: 1,
           type: 'user_message',
         }),
-      ),
-      null,
-    );
+      },
+    ];
+    for (const { name, raw } of cases) {
+      assert.equal(tryDecodeInbound(raw), null, name);
+    }
   });
 });

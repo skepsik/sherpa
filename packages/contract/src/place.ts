@@ -1,8 +1,8 @@
-import { isRecord } from './wire';
+import { findNonEmptyString, isRecord } from './wire';
 
 /**
- * Место разговора на границе транспорт ↔ раннер.
- * Роли: личка (привратник) / топик (агент проекта). Идентификаторы opaque для транспорта.
+ * Место разговора на границе транспорт ↔ раннер:
+ * личный чат (`direct`) или топик (`topic`). Идентификаторы opaque для транспорта.
  */
 export type Place =
   | { chatId: string; kind: 'direct' }
@@ -13,15 +13,13 @@ export type TopicPlace = Extract<Place, { kind: 'topic' }>;
 /** Мягкий разбор Place с провода. */
 export function findPlace(value: unknown): null | Place {
   if (!isRecord(value)) return null;
-  if (typeof value.chatId !== 'string' || value.chatId.length === 0) {
-    return null;
-  }
-  if (value.kind === 'direct') return { chatId: value.chatId, kind: 'direct' };
+  const chatId = findNonEmptyString(value.chatId);
+  if (!chatId) return null;
+  if (value.kind === 'direct') return { chatId, kind: 'direct' };
   if (value.kind === 'topic') {
-    if (typeof value.topicId !== 'string' || value.topicId.length === 0) {
-      return null;
-    }
-    return { chatId: value.chatId, kind: 'topic', topicId: value.topicId };
+    const topicId = findNonEmptyString(value.topicId);
+    if (!topicId) return null;
+    return { chatId, kind: 'topic', topicId };
   }
   return null;
 }

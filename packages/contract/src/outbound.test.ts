@@ -70,11 +70,6 @@ void describe('outbound encode/decode', () => {
     };
     const decoded = tryDecodeOutbound(encodeOutbound('c2', command));
     assert.deepEqual(decoded, { command, id: 'c2' });
-    assert.equal(decoded?.command.type, 'send_buttons');
-    if (decoded?.command.type === 'send_buttons') {
-      assert.equal(decoded.command.requestId, 'perm-42');
-      assert.equal(decoded.command.buttons[0]?.data, 'allow');
-    }
   });
 
   void it('roundtrip create_topic + успешный результат', () => {
@@ -83,8 +78,10 @@ void describe('outbound encode/decode', () => {
       title: 'проект-alpha',
       type: 'create_topic',
     };
-    const decodedCmd = tryDecodeOutbound(encodeOutbound('c3', command));
-    assert.deepEqual(decodedCmd, { command, id: 'c3' });
+    assert.deepEqual(tryDecodeOutbound(encodeOutbound('c3', command)), {
+      command,
+      id: 'c3',
+    });
 
     const result: OutboundCreateTopicOk = {
       place: {
@@ -156,236 +153,236 @@ void describe('outbound encode/decode', () => {
   });
 
   void it('roundtrip send_ok с messageId', () => {
-    const sendTextOk: OutboundSendOk = {
-      commandType: 'send_text',
-      messageId: 'm-text',
-      type: 'send_ok',
-    };
-    assert.deepEqual(
-      tryDecodeOutboundResult(encodeOutboundResult('c5', sendTextOk)),
-      { id: 'c5', result: sendTextOk },
-    );
-    const sendButtonsOk: OutboundSendOk = {
-      commandType: 'send_buttons',
-      messageId: 'm-btn',
-      type: 'send_ok',
-    };
-    assert.deepEqual(
-      tryDecodeOutboundResult(encodeOutboundResult('c6', sendButtonsOk)),
-      { id: 'c6', result: sendButtonsOk },
-    );
-    const editOk: OutboundSendOk = {
-      commandType: 'edit_text',
-      messageId: 'm-edit',
-      type: 'send_ok',
-    };
-    assert.deepEqual(
-      tryDecodeOutboundResult(encodeOutboundResult('c7', editOk)),
-      { id: 'c7', result: editOk },
-    );
-    assert.equal(
-      tryDecodeOutboundResult(
-        outboundResultWire({ commandType: 'send_text', type: 'send_ok' }),
-      ),
-      null,
-    );
+    const cases: OutboundSendOk[] = [
+      { commandType: 'send_text', messageId: 'm-text', type: 'send_ok' },
+      { commandType: 'send_buttons', messageId: 'm-btn', type: 'send_ok' },
+      { commandType: 'edit_text', messageId: 'm-edit', type: 'send_ok' },
+    ];
+    for (const [i, result] of cases.entries()) {
+      assert.deepEqual(
+        tryDecodeOutboundResult(encodeOutboundResult(`c${i}`, result)),
+        { id: `c${i}`, result },
+      );
+    }
   });
 
   void it('отказ на невалидный wire команды', () => {
-    assert.equal(tryDecodeOutbound('{'), null);
-    assert.equal(
-      tryDecodeOutbound(
-        JSON.stringify({ direction: 'inbound', event: {}, v: 1 }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+    const validSend = {
+      place: { chatId: 'c', kind: 'direct' },
+      text: 'hi',
+      type: 'send_text',
+    };
+    const cases: { name: string; raw: string }[] = [
+      { name: 'битый json', raw: '{' },
+      {
+        name: 'inbound envelope',
+        raw: JSON.stringify({ direction: 'inbound', event: {}, v: 1 }),
+      },
+      {
+        name: 'send_text без text',
+        raw: outboundCommandWire({
           place: { chatId: 'c', kind: 'direct' },
           type: 'send_text',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire(
-          {
-            place: { chatId: 'c', kind: 'direct' },
-            text: 'hi',
-            type: 'send_text',
-          },
-          { id: '' },
-        ),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'пустой id',
+        raw: outboundCommandWire(validSend, { id: '' }),
+      },
+      {
+        name: 'пустой chatId',
+        raw: outboundCommandWire({
           place: { chatId: '', kind: 'direct' },
           text: 'hi',
           type: 'send_text',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'topic без topicId',
+        raw: outboundCommandWire({
           place: { chatId: 'c', kind: 'topic' },
           text: 'hi',
           type: 'send_text',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'send_buttons с пустым topicId',
+        raw: outboundCommandWire({
           buttons: [{ data: 'allow', label: 'Ok' }],
           place: { chatId: 'c', kind: 'topic', topicId: '' },
           requestId: 'r1',
           text: 'hi',
           type: 'send_buttons',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'пустой text',
+        raw: outboundCommandWire({
           place: { chatId: 'c', kind: 'direct' },
           text: '',
           type: 'send_text',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'пустые buttons',
+        raw: outboundCommandWire({
           buttons: [],
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           text: 'q',
           type: 'send_buttons',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'пустой requestId',
+        raw: outboundCommandWire({
           buttons: [{ data: 'allow', label: 'Ok' }],
           place: { chatId: 'c', kind: 'direct' },
           requestId: '',
           text: 'q',
           type: 'send_buttons',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'пустой data кнопки',
+        raw: outboundCommandWire({
           buttons: [{ data: '', label: 'Ok' }],
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           text: 'q',
           type: 'send_buttons',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'пустой label кнопки',
+        raw: outboundCommandWire({
           buttons: [{ data: 'allow', label: '' }],
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           text: 'q',
           type: 'send_buttons',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'create_topic пустой chatId',
+        raw: outboundCommandWire({
           chatId: '',
           title: 't',
           type: 'create_topic',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire({
+      },
+      {
+        name: 'create_topic пустой title',
+        raw: outboundCommandWire({
           chatId: 'sg',
           title: '',
           type: 'create_topic',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire(
-          {
-            place: { chatId: 'c', kind: 'direct' },
-            text: 'hi',
-            type: 'send_text',
+      },
+      {
+        name: 'версия 2',
+        raw: outboundCommandWire(validSend, { v: 2 }),
+      },
+      {
+        name: 'command+result вместе',
+        raw: outboundCommandWire(validSend, {
+          result: {
+            commandType: 'send_text',
+            messageId: 'm1',
+            type: 'send_ok',
           },
-          { v: 2 },
-        ),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutbound(
-        outboundCommandWire(
-          {
-            place: { chatId: 'c', kind: 'direct' },
-            text: 'hi',
-            type: 'send_text',
-          },
-          { result: { commandType: 'send_text', type: 'send_ok' } },
-        ),
-      ),
-      null,
-    );
+        }),
+      },
+      {
+        name: 'edit_text пустой messageId',
+        raw: outboundCommandWire({
+          messageId: '',
+          place: { chatId: 'c', kind: 'direct' },
+          text: 'x',
+          type: 'edit_text',
+        }),
+      },
+      {
+        name: 'edit_text пустой text',
+        raw: outboundCommandWire({
+          messageId: 'm1',
+          place: { chatId: 'c', kind: 'direct' },
+          text: '',
+          type: 'edit_text',
+        }),
+      },
+      {
+        name: 'edit_text buttons не массив',
+        raw: outboundCommandWire({
+          buttons: 'x',
+          messageId: 'm1',
+          place: { chatId: 'c', kind: 'direct' },
+          text: 'x',
+          type: 'edit_text',
+        }),
+      },
+      {
+        name: 'edit_text невалидная кнопка',
+        raw: outboundCommandWire({
+          buttons: [{ data: '', label: 'Ok' }],
+          messageId: 'm1',
+          place: { chatId: 'c', kind: 'direct' },
+          text: 'x',
+          type: 'edit_text',
+        }),
+      },
+    ];
+    for (const { name, raw } of cases) {
+      assert.equal(tryDecodeOutbound(raw), null, name);
+    }
   });
 
   void it('отказ на невалидный wire результата', () => {
-    assert.equal(tryDecodeOutboundResult('{'), null);
-    assert.equal(
-      tryDecodeOutboundResult(
-        outboundResultWire({
+    const cases: { name: string; raw: string }[] = [
+      { name: 'битый json', raw: '{' },
+      {
+        name: 'create_topic_ok с direct',
+        raw: outboundResultWire({
           place: { chatId: 'c', kind: 'direct' },
           type: 'create_topic_ok',
         }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutboundResult(
-        outboundResultWire({ code: 'unknown', type: 'error' }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutboundResult(
-        outboundResultWire({ commandType: 'create_topic', type: 'send_ok' }),
-      ),
-      null,
-    );
-    assert.equal(
-      tryDecodeOutboundResult(
-        outboundResultWire(
-          { commandType: 'send_text', type: 'send_ok' },
+      },
+      {
+        name: 'неизвестный code',
+        raw: outboundResultWire({ code: 'unknown', type: 'error' }),
+      },
+      {
+        name: 'send_ok с commandType create_topic',
+        raw: outboundResultWire({
+          commandType: 'create_topic',
+          messageId: 'm1',
+          type: 'send_ok',
+        }),
+      },
+      {
+        name: 'send_ok без messageId',
+        raw: outboundResultWire({ commandType: 'send_text', type: 'send_ok' }),
+      },
+      {
+        name: 'error message не строка',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          message: 1,
+          type: 'error',
+        }),
+      },
+      {
+        name: 'error невалидный commandType',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          commandType: 'nope',
+          type: 'error',
+        }),
+      },
+      {
+        name: 'command+result вместе',
+        raw: outboundResultWire(
+          { commandType: 'send_text', messageId: 'm1', type: 'send_ok' },
           {
             command: {
               place: { chatId: 'c', kind: 'direct' },
@@ -394,8 +391,10 @@ void describe('outbound encode/decode', () => {
             },
           },
         ),
-      ),
-      null,
-    );
+      },
+    ];
+    for (const { name, raw } of cases) {
+      assert.equal(tryDecodeOutboundResult(raw), null, name);
+    }
   });
 });
