@@ -5,20 +5,7 @@ import { assertNever } from './assert';
 import { findPlace } from './place';
 import { findNonEmptyString, isRecord, WIRE_VERSION } from './wire';
 
-export const INBOUND_EVENT_TYPES = ['callback', 'user_message'] as const;
-
-/**
- * Нажатие inline-кнопки.
- * `requestId` — корреляция с исходящим запросом permission/кнопки
- * (тот же id, что раннер положил в outbound с кнопками).
- * `data` — opaque payload выбора кнопки.
- */
-export type InboundCallback = {
-  data: string;
-  place: Place;
-  requestId: string;
-  type: 'callback';
-};
+export const INBOUND_EVENT_TYPES = ['message', 'question_answer'] as const;
 
 /** Успешный разбор inbound с провода. */
 export type InboundDecoded = {
@@ -28,7 +15,7 @@ export type InboundDecoded = {
 
 /**
  * Envelope inbound на проводе.
- * `eventId` — идемпотентность при at-least-once (напр. Telegram `update_id`).
+ * `eventId` — дедуп у раннера (для Telegram — строка из `update_id`).
  */
 export type InboundEnvelope = {
   direction: Extract<WireDirection, 'inbound'>;
@@ -37,16 +24,28 @@ export type InboundEnvelope = {
   v: typeof WIRE_VERSION;
 };
 
-export type InboundEvent = InboundCallback | InboundUserMessage;
+export type InboundEvent = InboundMessage | InboundQuestionAnswer;
 
 export type InboundEventType = (typeof INBOUND_EVENT_TYPES)[number];
 
-/** Сообщение пользователя в месте разговора. */
-export type InboundUserMessage = {
+/** Текст пользователя в месте разговора. */
+export type InboundMessage = {
   place: Place;
-  /** Текст, если в апдейте он был. */
-  text?: string;
-  type: 'user_message';
+  /** Непустой текст сообщения. */
+  text: string;
+  type: 'message';
+};
+
+/**
+ * Ответ на вопрос (нажатие inline-кнопки).
+ * `requestId` — корреляция с исходящим `send_question`.
+ * `data` — opaque payload выбора кнопки.
+ */
+export type InboundQuestionAnswer = {
+  data: string;
+  place: Place;
+  requestId: string;
+  type: 'question_answer';
 };
 
 export function encodeInbound(eventId: string, event: InboundEvent): string {
@@ -70,24 +69,14 @@ export function tryDecodeInbound(raw: string): InboundDecoded | null {
   return findInboundEnvelope(parsed);
 }
 
-function findCallback(value: Record<string, unknown>): InboundCallback | null {
-  const place = findPlace(value.place);
-  if (!place) return null;
-  const data = findNonEmptyString(value.data);
-  if (!data) return null;
-  const requestId = findNonEmptyString(value.requestId);
-  if (!requestId) return null;
-  return { data, place, requestId, type: 'callback' };
-}
-
 function findEventBody(value: unknown): InboundEvent | null {
   if (!isRecord(value)) return null;
   if (!isEventType(value.type)) return null;
   switch (value.type) {
-    case 'callback':
-      return findCallback(value);
-    case 'user_message':
-      return findUserMessage(value);
+    case 'message':
+      return findMessage(value);
+    case 'question_answer':
+      return findQuestionAnswer(value);
     default:
       return assertNever(value.type);
   }
@@ -104,14 +93,24 @@ function findInboundEnvelope(value: unknown): InboundDecoded | null {
   return { event, eventId };
 }
 
-function findUserMessage(
-  value: Record<string, unknown>,
-): InboundUserMessage | null {
+function findMessage(value: Record<string, unknown>): InboundMessage | null {
   const place = findPlace(value.place);
   if (!place) return null;
-  if (value.text === undefined) return { place, type: 'user_message' };
-  if (typeof value.text !== 'string') return null;
-  return { place, text: value.text, type: 'user_message' };
+  const text = findNonEmptyString(value.text);
+  if (!text) return null;
+  return { place, text, type: 'message' };
+}
+
+function findQuestionAnswer(
+  value: Record<string, unknown>,
+): InboundQuestionAnswer | null {
+  const place = findPlace(value.place);
+  if (!place) return null;
+  const data = findNonEmptyString(value.data);
+  if (!data) return null;
+  const requestId = findNonEmptyString(value.requestId);
+  if (!requestId) return null;
+  return { data, place, requestId, type: 'question_answer' };
 }
 
 function isEventType(value: unknown): value is InboundEventType {

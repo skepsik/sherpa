@@ -5,9 +5,16 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
-    "@sherpa/contract": "*"
+    "@sherpa/contract": "*",
+    "dotenv": "^18.0.9",
+    "grammy": "^1.46.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
   }
 }

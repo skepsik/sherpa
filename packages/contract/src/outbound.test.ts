@@ -4,12 +4,14 @@ import { describe, it } from 'node:test';
 import type {
   OutboundCreateTopic,
   OutboundCreateTopicOk,
-  OutboundEditText,
   OutboundError,
   OutboundErrorCode,
-  OutboundSendButtons,
+  OutboundQuestionOk,
+  OutboundResolveQuestion,
+  OutboundSendMessage,
   OutboundSendOk,
-  OutboundSendText,
+  OutboundSendQuestion,
+  OutboundSetStatus,
 } from './outbound';
 
 import {
@@ -47,18 +49,18 @@ function outboundResultWire(
 }
 
 void describe('outbound encode/decode', () => {
-  void it('roundtrip send_text', () => {
-    const command: OutboundSendText = {
+  void it('roundtrip send_message', () => {
+    const command: OutboundSendMessage = {
       place: { chatId: 'chat-1', kind: 'direct' },
       text: 'ответ',
-      type: 'send_text',
+      type: 'send_message',
     };
     const decoded = tryDecodeOutbound(encodeOutbound('c1', command));
     assert.deepEqual(decoded, { command, id: 'c1' });
   });
 
-  void it('roundtrip send_buttons (callback-совместимо)', () => {
-    const command: OutboundSendButtons = {
+  void it('roundtrip send_question (question_answer-совместимо)', () => {
+    const command: OutboundSendQuestion = {
       buttons: [
         { data: 'allow', label: 'Разрешить' },
         { data: 'deny', label: 'Отклонить' },
@@ -66,7 +68,7 @@ void describe('outbound encode/decode', () => {
       place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
       requestId: 'perm-42',
       text: 'Нужен доступ?',
-      type: 'send_buttons',
+      type: 'send_question',
     };
     const decoded = tryDecodeOutbound(encodeOutbound('c2', command));
     assert.deepEqual(decoded, { command, id: 'c2' });
@@ -102,28 +104,31 @@ void describe('outbound encode/decode', () => {
     );
   });
 
-  void it('roundtrip edit_text (правка и снятие кнопок)', () => {
-    const edit: OutboundEditText = {
-      buttons: [],
+  void it('roundtrip resolve_question', () => {
+    const command: OutboundResolveQuestion = {
       messageId: 'msg-9',
       place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
-      text: 'обновлено',
-      type: 'edit_text',
+      text: 'выбрано: allow',
+      type: 'resolve_question',
     };
-    assert.deepEqual(tryDecodeOutbound(encodeOutbound('c-edit', edit)), {
-      command: edit,
-      id: 'c-edit',
+    assert.deepEqual(tryDecodeOutbound(encodeOutbound('c-resolve', command)), {
+      command,
+      id: 'c-resolve',
     });
-    const editTextOnly: OutboundEditText = {
-      messageId: 'msg-9',
-      place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
-      text: 'только текст',
-      type: 'edit_text',
-    };
-    assert.deepEqual(
-      tryDecodeOutbound(encodeOutbound('c-edit2', editTextOnly)),
-      { command: editTextOnly, id: 'c-edit2' },
-    );
+  });
+
+  void it('roundtrip set_status busy|idle', () => {
+    for (const status of ['busy', 'idle'] as const) {
+      const command: OutboundSetStatus = {
+        place: { chatId: 'chat-1', kind: 'direct' },
+        status,
+        type: 'set_status',
+      };
+      assert.deepEqual(
+        tryDecodeOutbound(encodeOutbound(`status-${status}`, command)),
+        { command, id: `status-${status}` },
+      );
+    }
   });
 
   void it('roundtrip отказ транспорта — все OutboundErrorCode', () => {
@@ -134,7 +139,12 @@ void describe('outbound encode/decode', () => {
       'transport_rejected',
     ];
     for (const code of codes) {
-      const result: OutboundError = { code, type: 'error' };
+      const result: OutboundError = {
+        code,
+        commandType: 'send_message',
+        message: `err-${code}`,
+        type: 'error',
+      };
       assert.deepEqual(
         tryDecodeOutboundResult(encodeOutboundResult(`err-${code}`, result)),
         { id: `err-${code}`, result },
@@ -152,11 +162,11 @@ void describe('outbound encode/decode', () => {
     );
   });
 
-  void it('roundtrip send_ok с messageId', () => {
+  void it('roundtrip send_ok без messageId', () => {
     const cases: OutboundSendOk[] = [
-      { commandType: 'send_text', messageId: 'm-text', type: 'send_ok' },
-      { commandType: 'send_buttons', messageId: 'm-btn', type: 'send_ok' },
-      { commandType: 'edit_text', messageId: 'm-edit', type: 'send_ok' },
+      { commandType: 'send_message', type: 'send_ok' },
+      { commandType: 'resolve_question', type: 'send_ok' },
+      { commandType: 'set_status', type: 'send_ok' },
     ];
     for (const [i, result] of cases.entries()) {
       assert.deepEqual(
@@ -166,11 +176,23 @@ void describe('outbound encode/decode', () => {
     }
   });
 
+  void it('roundtrip question_ok с messageId', () => {
+    const result: OutboundQuestionOk = {
+      commandType: 'send_question',
+      messageId: 'm-q',
+      type: 'question_ok',
+    };
+    assert.deepEqual(
+      tryDecodeOutboundResult(encodeOutboundResult('cq', result)),
+      { id: 'cq', result },
+    );
+  });
+
   void it('отказ на невалидный wire команды', () => {
     const validSend = {
       place: { chatId: 'c', kind: 'direct' },
       text: 'hi',
-      type: 'send_text',
+      type: 'send_message',
     };
     const cases: { name: string; raw: string }[] = [
       { name: 'битый json', raw: '{' },
@@ -179,10 +201,10 @@ void describe('outbound encode/decode', () => {
         raw: JSON.stringify({ direction: 'inbound', event: {}, v: 1 }),
       },
       {
-        name: 'send_text без text',
+        name: 'send_message без text',
         raw: outboundCommandWire({
           place: { chatId: 'c', kind: 'direct' },
-          type: 'send_text',
+          type: 'send_message',
         }),
       },
       {
@@ -194,7 +216,7 @@ void describe('outbound encode/decode', () => {
         raw: outboundCommandWire({
           place: { chatId: '', kind: 'direct' },
           text: 'hi',
-          type: 'send_text',
+          type: 'send_message',
         }),
       },
       {
@@ -202,17 +224,17 @@ void describe('outbound encode/decode', () => {
         raw: outboundCommandWire({
           place: { chatId: 'c', kind: 'topic' },
           text: 'hi',
-          type: 'send_text',
+          type: 'send_message',
         }),
       },
       {
-        name: 'send_buttons с пустым topicId',
+        name: 'send_question с пустым topicId',
         raw: outboundCommandWire({
           buttons: [{ data: 'allow', label: 'Ok' }],
           place: { chatId: 'c', kind: 'topic', topicId: '' },
           requestId: 'r1',
           text: 'hi',
-          type: 'send_buttons',
+          type: 'send_question',
         }),
       },
       {
@@ -220,7 +242,7 @@ void describe('outbound encode/decode', () => {
         raw: outboundCommandWire({
           place: { chatId: 'c', kind: 'direct' },
           text: '',
-          type: 'send_text',
+          type: 'send_message',
         }),
       },
       {
@@ -230,7 +252,7 @@ void describe('outbound encode/decode', () => {
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           text: 'q',
-          type: 'send_buttons',
+          type: 'send_question',
         }),
       },
       {
@@ -240,7 +262,7 @@ void describe('outbound encode/decode', () => {
           place: { chatId: 'c', kind: 'direct' },
           requestId: '',
           text: 'q',
-          type: 'send_buttons',
+          type: 'send_question',
         }),
       },
       {
@@ -250,7 +272,7 @@ void describe('outbound encode/decode', () => {
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           text: 'q',
-          type: 'send_buttons',
+          type: 'send_question',
         }),
       },
       {
@@ -260,7 +282,7 @@ void describe('outbound encode/decode', () => {
           place: { chatId: 'c', kind: 'direct' },
           requestId: 'r1',
           text: 'q',
-          type: 'send_buttons',
+          type: 'send_question',
         }),
       },
       {
@@ -287,44 +309,48 @@ void describe('outbound encode/decode', () => {
         name: 'command+result вместе',
         raw: outboundCommandWire(validSend, {
           result: {
-            commandType: 'send_text',
-            messageId: 'm1',
+            commandType: 'send_message',
             type: 'send_ok',
           },
         }),
       },
       {
-        name: 'edit_text пустой messageId',
+        name: 'resolve_question пустой messageId',
         raw: outboundCommandWire({
           messageId: '',
           place: { chatId: 'c', kind: 'direct' },
           text: 'x',
-          type: 'edit_text',
+          type: 'resolve_question',
         }),
       },
       {
-        name: 'edit_text пустой text',
+        name: 'resolve_question пустой text',
         raw: outboundCommandWire({
           messageId: 'm1',
           place: { chatId: 'c', kind: 'direct' },
           text: '',
-          type: 'edit_text',
+          type: 'resolve_question',
         }),
       },
       {
-        name: 'edit_text buttons не массив',
+        name: 'set_status неизвестный status',
         raw: outboundCommandWire({
-          buttons: 'x',
-          messageId: 'm1',
           place: { chatId: 'c', kind: 'direct' },
-          text: 'x',
-          type: 'edit_text',
+          status: 'thinking',
+          type: 'set_status',
         }),
       },
       {
-        name: 'edit_text невалидная кнопка',
+        name: 'старый type send_text',
         raw: outboundCommandWire({
-          buttons: [{ data: '', label: 'Ok' }],
+          place: { chatId: 'c', kind: 'direct' },
+          text: 'hi',
+          type: 'send_text',
+        }),
+      },
+      {
+        name: 'старый type edit_text',
+        raw: outboundCommandWire({
           messageId: 'm1',
           place: { chatId: 'c', kind: 'direct' },
           text: 'x',
@@ -349,24 +375,80 @@ void describe('outbound encode/decode', () => {
       },
       {
         name: 'неизвестный code',
-        raw: outboundResultWire({ code: 'unknown', type: 'error' }),
+        raw: outboundResultWire({
+          code: 'unknown',
+          commandType: 'send_message',
+          message: 'x',
+          type: 'error',
+        }),
       },
       {
         name: 'send_ok с commandType create_topic',
         raw: outboundResultWire({
           commandType: 'create_topic',
+          type: 'send_ok',
+        }),
+      },
+      {
+        name: 'send_ok с messageId',
+        raw: outboundResultWire({
+          commandType: 'send_message',
           messageId: 'm1',
           type: 'send_ok',
         }),
       },
       {
-        name: 'send_ok без messageId',
-        raw: outboundResultWire({ commandType: 'send_text', type: 'send_ok' }),
+        name: 'send_ok с commandType send_question',
+        raw: outboundResultWire({
+          commandType: 'send_question',
+          type: 'send_ok',
+        }),
+      },
+      {
+        name: 'question_ok без messageId',
+        raw: outboundResultWire({
+          commandType: 'send_question',
+          type: 'question_ok',
+        }),
+      },
+      {
+        name: 'question_ok с чужим commandType',
+        raw: outboundResultWire({
+          commandType: 'send_message',
+          messageId: 'm1',
+          type: 'question_ok',
+        }),
+      },
+      {
+        name: 'error без commandType',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          message: 'x',
+          type: 'error',
+        }),
+      },
+      {
+        name: 'error без message',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          commandType: 'send_message',
+          type: 'error',
+        }),
+      },
+      {
+        name: 'error с пустым message',
+        raw: outboundResultWire({
+          code: 'send_failed',
+          commandType: 'send_message',
+          message: '',
+          type: 'error',
+        }),
       },
       {
         name: 'error message не строка',
         raw: outboundResultWire({
           code: 'send_failed',
+          commandType: 'send_message',
           message: 1,
           type: 'error',
         }),
@@ -376,18 +458,19 @@ void describe('outbound encode/decode', () => {
         raw: outboundResultWire({
           code: 'send_failed',
           commandType: 'nope',
+          message: 'x',
           type: 'error',
         }),
       },
       {
         name: 'command+result вместе',
         raw: outboundResultWire(
-          { commandType: 'send_text', messageId: 'm1', type: 'send_ok' },
+          { commandType: 'send_message', type: 'send_ok' },
           {
             command: {
               place: { chatId: 'c', kind: 'direct' },
               text: 'x',
-              type: 'send_text',
+              type: 'send_message',
             },
           },
         ),
