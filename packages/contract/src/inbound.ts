@@ -1,6 +1,7 @@
 import type { Place } from './place';
 import type { WireDirection } from './wire';
 
+import { findPlace } from './place';
 import { WIRE_VERSION } from './wire';
 
 /**
@@ -80,20 +81,6 @@ function findInboundEvent(value: unknown): InboundEvent | null {
   if (value.v !== WIRE_VERSION) return null;
   if (value.direction !== 'inbound') return null;
   return findEventBody(value.event);
-}
-
-function findPlace(value: unknown): null | Place {
-  if (!isRecord(value)) return null;
-  if (typeof value.chatId !== 'string' || value.chatId.length === 0)
-    return null;
-  if (value.kind === 'direct') return { chatId: value.chatId, kind: 'direct' };
-  if (value.kind === 'topic') {
-    if (typeof value.topicId !== 'string' || value.topicId.length === 0) {
-      return null;
-    }
-    return { chatId: value.chatId, kind: 'topic', topicId: value.topicId };
-  }
-  return null;
 }
 
 function findUserMessage(
