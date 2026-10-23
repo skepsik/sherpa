@@ -5,14 +5,15 @@
   "packageManager": "npm@10.9.8",
   "workspaces": [
     "apps/bot",
-    "apps/runner"
+    "apps/runner",
+    "packages/contract"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "prepare": "husky",
-    "typecheck": "npm run typecheck -w @sherpa/bot && npm run typecheck -w @sherpa/runner",
+    "typecheck": "npm run typecheck -w @sherpa/contract && npm run typecheck -w @sherpa/bot && npm run typecheck -w @sherpa/runner",
     "lint": "eslint .",
     "format": "prettier --write . && eslint . --fix",
     "format:check": "prettier --check .",
