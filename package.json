@@ -1,0 +1,23 @@
+{
+  "name": "sherpa",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.8",
+  "workspaces": [
+    "apps/bot",
+    "apps/runner"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck -w @sherpa/bot && npm run typecheck -w @sherpa/runner",
+    "dev:bot": "npm run dev -w @sherpa/bot",
+    "dev:runner": "npm run dev -w @sherpa/runner"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
