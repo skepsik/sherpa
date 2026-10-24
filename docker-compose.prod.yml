@@ -1,0 +1,16 @@
+services:
+  bot:
+    build:
+      context: .
+      target: bot
+    image: sherpa-bot:local
+    restart: unless-stopped
+    ports:
+      # Порт канала публикуется только на указанном адресе, не на всех интерфейсах.
+      - '${SHERPA_CHANNEL_PUBLISH_HOST:?задай SHERPA_CHANNEL_PUBLISH_HOST в .env}:8787:8787'
+    env_file:
+      - .env
+    environment:
+      SHERPA_CHANNEL_HOST: 0.0.0.0
+      SHERPA_CHANNEL_PORT: '8787'
+      SHERPA_CHANNEL_PATH: /v1/channel
