@@ -5,3 +5,6 @@ secrets/
 node_modules/
 dist/
 *.tsbuildinfo
+
+design
+issues
