@@ -6,11 +6,11 @@
 
 ## 1. Ссылки на канон
 
-Пути от корня `sherpa` в бэктиках (`docs/…`), не markdown-link и не URL
-удалённого wiki. В теле issue относительный `](docs/…)` GitHub резолвит
+Пути от корня `sherpa` в бэктиках (`design/…`), не markdown-link и не URL
+удалённого wiki. В теле issue относительный `](design/…)` GitHub резолвит
 от `/issues/`.
 
-Канон сейчас: `docs/frames.md`, `docs/concept.md` (и смежные в `docs/`).
+Канон сейчас: `design/mvp.md` (и смежные в `design/`).
 Канон-proper дописывается на **gate** (fold из сверх / wire), не кодером
 в ходе work и не самовольно на нарезке.
 

@@ -13,7 +13,7 @@ alwaysApply: false
 issues/issue-<P>-<K>.md
 ```
 
-`<P>` — номер эпика из `docs/epics.md`. `<K>` — порядковый номер задачи внутри эпика.
+`<P>` — номер эпика из `issues/epics.md`. `<K>` — порядковый номер задачи внутри эпика.
 
 Пример: `issues/issue-1-2.md`. Id в промптах: `issue-<P>-<K>`.
 

@@ -20,7 +20,7 @@ alwaysApply: false
 
 `<P>` / `<K>` — из имени `issue-<P>-<K>.md`.
 
-Parent эпика: `docs/epics.md` + файлы `issues/issue-<P>-*`.
+Parent эпика: `issues/epics.md` + файлы `issues/issue-<P>-*`.
 
 ## Грязное дерево перед сменой ветки
 
@@ -54,7 +54,7 @@ issue-<P>-<K> <type>: <существительное + контекст на р
 <type>: <описание>
 ```
 
-Канон в `docs/` после Gate:
+Канон в `design/` после Gate:
 
 ```
 docs: <описание> (issue-<P>-<K>)
