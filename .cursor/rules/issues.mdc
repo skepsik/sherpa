@@ -42,6 +42,8 @@ status: todo | done
 
 Дальше: `category-content.md` и `adapter.md` в том же каталоге.
 
+В **критерии готовности** не писать `npm run check` / `typecheck` / format: это всегда роль `@coder` (`coder.mdc`), не постановка.
+
 Публичная поверхность / runtime-deps вне дословной постановки → «Сверх постановки» (`coder-finalize.mdc`) → disposition на gate.
 
 Продукт — в эпике. На нарезке всплыл продукт вне эпика — эскалация владельцу до кодера.

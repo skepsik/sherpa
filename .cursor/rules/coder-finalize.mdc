@@ -9,6 +9,7 @@ alwaysApply: false
 
 1. `npm run format` на **изменённые** product-файлы.
 2. Секция **Реализация** в конец локального issue-файла (не gh).
+3. Отчёт оркестратору — с зелёным `npm run check` **после** format (`coder.mdc`: один check на отчёт).
 
 ## Сверх постановки
 
