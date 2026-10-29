@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
+    "seed": "tsx src/seed-cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/**/*.test.ts"
   },

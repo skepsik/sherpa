@@ -1,4 +1,4 @@
-import type { ChannelConfig, RunnerConfig } from './types';
+import type { ChannelConfig, RegistryConfig, RunnerConfig } from './types';
 
 /** `SHERPA_CHANNEL_URL` + `SHERPA_CHANNEL_SECRET`; без — отказ. */
 export function loadChannelConfig(
@@ -10,11 +10,21 @@ export function loadChannelConfig(
   return { secret, url };
 }
 
-/** Читает URL и секрет канала; промах обязательных ключей → throw. */
+/** `SHERPA_REGISTRY_PATH` — файл SQLite реестра (или DSN того же ключа). */
+export function loadRegistryConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): RegistryConfig {
+  return { path: requireEnv(env, 'SHERPA_REGISTRY_PATH') };
+}
+
+/** Читает канал и путь реестра; промах обязательных ключей → throw. */
 export function loadRunnerConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): RunnerConfig {
-  return { channel: loadChannelConfig(env) };
+  return {
+    channel: loadChannelConfig(env),
+    registry: loadRegistryConfig(env),
+  };
 }
 
 function requireEnv(env: NodeJS.ProcessEnv, key: string) {

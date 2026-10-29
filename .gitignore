@@ -6,5 +6,12 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Реестр раннера (SHERPA_REGISTRY_PATH)
+/data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+
 design
 issues
