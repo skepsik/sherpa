@@ -20,8 +20,6 @@ export {
   tryDecodeOutboundResult,
 } from './outbound';
 
-export { isDirectPlace, isTopicPlace } from './place';
-
 export type {
   InboundDecoded,
   InboundEnvelope,
@@ -32,8 +30,8 @@ export type {
   OutboundCommand,
   OutboundCommandEnvelope,
   OutboundCommandType,
-  OutboundCreateTopic,
-  OutboundCreateTopicOk,
+  OutboundCreatePlace,
+  OutboundCreatePlaceOk,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
@@ -49,7 +47,6 @@ export type {
   OutboundSetStatus,
   OutboundStatus,
   Place,
-  TopicPlace,
   WireDirection,
   WireVersion,
 } from './types';

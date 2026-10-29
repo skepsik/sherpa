@@ -1,7 +1,7 @@
 import type {
   OutboundCommand,
   OutboundCommandType,
-  OutboundCreateTopic,
+  OutboundCreatePlace,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
@@ -11,15 +11,15 @@ import type {
   OutboundSendOkCommandType,
   OutboundSendQuestion,
   OutboundSetStatus,
-  Place,
 } from '@sherpa/contract';
 
 import { assertNever } from '@sherpa/contract';
 import { GrammyError } from 'grammy';
 
-import type { InlineKeyboard, OutboundApi } from './types';
+import type { InlineKeyboard, OutboundApi, TelegramPlace } from './types';
 
 import { tryPackCallbackData } from './callback-data';
+import { encodePlaceId, findTelegramPlace } from './place-id';
 
 /** Лимит Telegram на длину текста сообщения (символы). */
 export const TELEGRAM_TEXT_MAX_CHARS = 4096;
@@ -39,8 +39,8 @@ export async function executeOutbound(
   command: OutboundCommand,
 ): Promise<OutboundResult> {
   switch (command.type) {
-    case 'create_topic':
-      return executeCreateTopic(api, command);
+    case 'create_place':
+      return executeCreatePlace(api, command);
     case 'resolve_question':
       return executeResolveQuestion(api, command);
     case 'send_message':
@@ -71,24 +71,29 @@ async function callWithRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function executeCreateTopic(
+async function executeCreatePlace(
   api: OutboundApi,
-  command: OutboundCreateTopic,
+  command: OutboundCreatePlace,
 ): Promise<OutboundResult> {
+  const parent = findTelegramPlace(command.place);
+  if (!parent) {
+    return placeUnavailable('create_place', 'unknown place id');
+  }
+
   try {
     const topic = await callWithRateLimitRetry(() =>
-      api.createForumTopic(command.chatId, command.title),
+      api.createForumTopic(parent.chatId, command.title),
     );
     return {
-      place: {
-        chatId: command.chatId,
+      place: encodePlaceId({
+        chatId: parent.chatId,
         kind: 'topic',
         topicId: String(topic.message_thread_id),
-      },
-      type: 'create_topic_ok',
+      }),
+      type: 'create_place_ok',
     };
   } catch (error) {
-    return mapApiError(error, 'create_topic');
+    return mapApiError(error, 'create_place');
   }
 }
 
@@ -96,6 +101,11 @@ async function executeResolveQuestion(
   api: OutboundApi,
   command: OutboundResolveQuestion,
 ): Promise<OutboundResult> {
+  const place = findTelegramPlace(command.place);
+  if (!place) {
+    return placeUnavailable('resolve_question', 'unknown place id');
+  }
+
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'resolve_question',
@@ -106,7 +116,7 @@ async function executeResolveQuestion(
   try {
     await callWithRateLimitRetry(() =>
       api.editMessageText(
-        command.place.chatId,
+        place.chatId,
         Number(command.messageId),
         command.text,
         { reply_markup: { inline_keyboard: [] } },
@@ -125,6 +135,11 @@ async function executeSendMessage(
   api: OutboundApi,
   command: OutboundSendMessage,
 ): Promise<OutboundResult> {
+  const place = findTelegramPlace(command.place);
+  if (!place) {
+    return placeUnavailable('send_message', 'unknown place id');
+  }
+
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'send_message',
@@ -134,11 +149,7 @@ async function executeSendMessage(
 
   try {
     await callWithRateLimitRetry(() =>
-      api.sendMessage(
-        command.place.chatId,
-        command.text,
-        threadOptions(command.place),
-      ),
+      api.sendMessage(place.chatId, command.text, threadOptions(place)),
     );
     return sendOk('send_message');
   } catch (error) {
@@ -150,6 +161,11 @@ async function executeSendQuestion(
   api: OutboundApi,
   command: OutboundSendQuestion,
 ): Promise<OutboundResult> {
+  const place = findTelegramPlace(command.place);
+  if (!place) {
+    return placeUnavailable('send_question', 'unknown place id');
+  }
+
   if (command.text.length > TELEGRAM_TEXT_MAX_CHARS) {
     return rejected(
       'send_question',
@@ -164,8 +180,8 @@ async function executeSendQuestion(
 
   try {
     const message = await callWithRateLimitRetry(() =>
-      api.sendMessage(command.place.chatId, command.text, {
-        ...threadOptions(command.place),
+      api.sendMessage(place.chatId, command.text, {
+        ...threadOptions(place),
         reply_markup: { inline_keyboard: keyboard },
       }),
     );
@@ -180,7 +196,9 @@ async function executeSendQuestion(
 }
 
 function executeSetStatus(command: OutboundSetStatus): OutboundResult {
-  void command;
+  if (!findTelegramPlace(command.place)) {
+    return placeUnavailable('set_status', 'unknown place id');
+  }
   return sendOk('set_status');
 }
 
@@ -216,6 +234,18 @@ function mapApiError(
   };
 }
 
+function placeUnavailable(
+  commandType: OutboundCommandType,
+  message: string,
+): OutboundError {
+  return {
+    code: 'place_unavailable',
+    commandType,
+    message,
+    type: 'error',
+  };
+}
+
 function rejected(
   commandType: OutboundCommandType,
   message: string,
@@ -241,7 +271,7 @@ function resolveOutboundErrorCode(
   commandType: OutboundCommandType,
 ): OutboundErrorCode {
   if (isPlaceUnavailable(error)) return 'place_unavailable';
-  if (commandType === 'create_topic') return 'create_topic_failed';
+  if (commandType === 'create_place') return 'place_create_failed';
   return 'send_failed';
 }
 
@@ -255,7 +285,7 @@ function sleep(ms: number) {
   });
 }
 
-function threadOptions(place: Place) {
+function threadOptions(place: TelegramPlace) {
   if (place.kind === 'direct') return {};
   return { message_thread_id: Number(place.topicId) };
 }

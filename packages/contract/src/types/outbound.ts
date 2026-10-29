@@ -1,4 +1,4 @@
-import type { Place, TopicPlace } from './place';
+import type { Place } from './place';
 import type { WireDirection, WireVersion } from './wire';
 
 /**
@@ -6,7 +6,7 @@ import type { WireDirection, WireVersion } from './wire';
  * Нет project / access / cwd — маршрутизацию решает раннер.
  */
 export type OutboundCommand =
-  | OutboundCreateTopic
+  | OutboundCreatePlace
   | OutboundResolveQuestion
   | OutboundSendMessage
   | OutboundSendQuestion
@@ -22,24 +22,26 @@ export type OutboundCommandEnvelope = {
 };
 
 export type OutboundCommandType =
-  | 'create_topic'
+  | 'create_place'
   | 'resolve_question'
   | 'send_message'
   | 'send_question'
   | 'set_status';
 
-/** Создать топик в супергруппе (forum). */
-export type OutboundCreateTopic = {
-  /** Чат супергруппы, где создать топик. */
-  chatId: string;
+/**
+ * Создать место в транспорте.
+ * `place` — opaque id родителя; `title` — заголовок нового места.
+ */
+export type OutboundCreatePlace = {
+  place: Place;
   title: string;
-  type: 'create_topic';
+  type: 'create_place';
 };
 
-/** Успешное создание топика: место для маршрутизации. */
-export type OutboundCreateTopicOk = {
-  place: TopicPlace;
-  type: 'create_topic_ok';
+/** Успешное создание места: opaque id нового места. */
+export type OutboundCreatePlaceOk = {
+  place: Place;
+  type: 'create_place_ok';
 };
 
 /**
@@ -55,7 +57,7 @@ export type OutboundError = {
 };
 
 export type OutboundErrorCode =
-  | 'create_topic_failed'
+  | 'place_create_failed'
   | 'place_unavailable'
   | 'send_failed'
   | 'transport_rejected';
@@ -88,7 +90,7 @@ export type OutboundResolveQuestion = {
 
 /** Исход команды транспорт → раннер. */
 export type OutboundResult =
-  OutboundCreateTopicOk | OutboundError | OutboundQuestionOk | OutboundSendOk;
+  OutboundCreatePlaceOk | OutboundError | OutboundQuestionOk | OutboundSendOk;
 
 /** Envelope исхода на проводе (тот же `direction`, поле `result`). */
 export type OutboundResultEnvelope = {
@@ -100,9 +102,9 @@ export type OutboundResultEnvelope = {
 };
 
 export type OutboundResultType =
-  'create_topic_ok' | 'error' | 'question_ok' | 'send_ok';
+  'create_place_ok' | 'error' | 'question_ok' | 'send_ok';
 
-/** Отправить текст в место (личка или топик). */
+/** Отправить текст в место. */
 export type OutboundSendMessage = {
   place: Place;
   text: string;

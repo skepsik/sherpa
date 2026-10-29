@@ -16,6 +16,19 @@
 | `SHERPA_CHANNEL_PORT`       | нет         | bind port, по умолчанию `8787`           |
 | `SHERPA_CHANNEL_PATH`       | нет         | path upgrade, по умолчанию `/v1/channel` |
 
+## Opaque `Place`
+
+На проводе — непрозрачная строка (`Place`). Кодек Telegram ↔ id только в боте (`src/place-id.ts`); раннер строку не разбирает.
+
+Формат (версия кодека `tg1`; смена, ломающая уже выданные id, — только с явной миграцией):
+
+| Telegram-место                      | Id                         |
+| ----------------------------------- | -------------------------- |
+| личка `chatId`                      | `tg1:d:<chatId>`           |
+| форумный топик `chatId` + `topicId` | `tg1:t:<chatId>:<topicId>` |
+
+Неизвестный / недекодируемый id на outbound → `place_unavailable`.
+
 ## Канал WebSocket
 
 Бот слушает. Клиент канала — исходящее соединение.
@@ -44,7 +57,7 @@
   "eventId": "42",
   "event": {
     "type": "message",
-    "place": { "kind": "direct", "chatId": "123" },
+    "place": "tg1:d:123",
     "text": "привет"
   }
 }
@@ -59,7 +72,7 @@
   "id": "cmd-1",
   "command": {
     "type": "send_message",
-    "place": { "kind": "direct", "chatId": "123" },
+    "place": "tg1:d:123",
     "text": "ок"
   }
 }
@@ -95,5 +108,5 @@ npm run dev:bot
 3. Поднять бот; подключить тестовый WS-клиент с `Authorization: Bearer …`.
 4. Личка: текст → inbound на канале; без клиента — текст недоступности в Place.
 5. Топик: то же для текста и для `question_answer` (кнопка).
-6. С канала глазами: `send_message`, `send_question`, `resolve_question`, `set_status` (заглушка), `create_topic`.
+6. С канала глазами: `send_message`, `send_question`, `resolve_question`, `set_status` (заглушка), `create_place`.
 7. Второй WS-клиент вытесняет первый.
