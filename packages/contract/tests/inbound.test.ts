@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import type { InboundMessage, InboundQuestionAnswer } from '../src/types';
 
 import { encodeInbound, tryDecodeInbound } from '../src/inbound';
-import { isDirectPlace, isTopicPlace } from '../src/place';
+import { WIRE_VERSION } from '../src/wire';
 
 function inboundWire(event: unknown, overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
@@ -17,27 +17,29 @@ function inboundWire(event: unknown, overrides: Record<string, unknown> = {}) {
 }
 
 void describe('inbound encode/decode', () => {
-  void it('roundtrip message в личке с eventId', () => {
+  void it('WIRE_VERSION === 1', () => {
+    assert.equal(WIRE_VERSION, 1);
+  });
+
+  void it('roundtrip message со строковым place', () => {
     const event: InboundMessage = {
-      place: { chatId: 'chat-1', kind: 'direct' },
+      place: 'tg1:d:chat-1',
       text: 'привет',
       type: 'message',
     };
     const decoded = tryDecodeInbound(encodeInbound('42', event));
     assert.deepEqual(decoded, { event, eventId: '42' });
-    assert.ok(decoded && isDirectPlace(decoded.event.place));
   });
 
-  void it('roundtrip question_answer в топике', () => {
+  void it('roundtrip question_answer со строковым place', () => {
     const event: InboundQuestionAnswer = {
       data: 'allow',
-      place: { chatId: 'chat-2', kind: 'topic', topicId: 'topic-9' },
+      place: 'tg1:t:chat-2:topic-9',
       requestId: 'perm-42',
       type: 'question_answer',
     };
     const decoded = tryDecodeInbound(encodeInbound('99', event));
     assert.deepEqual(decoded, { event, eventId: '99' });
-    assert.ok(decoded && isTopicPlace(decoded.event.place));
   });
 
   void it('отказ на невалидный wire', () => {
@@ -55,58 +57,63 @@ void describe('inbound encode/decode', () => {
       {
         name: 'нет eventId',
         raw: inboundWire(
-          { place: { chatId: 'c', kind: 'direct' }, type: 'message' },
+          { place: 'p1', type: 'message' },
           { eventId: undefined },
         ),
       },
       {
         name: 'пустой eventId',
-        raw: inboundWire(
-          { place: { chatId: 'c', kind: 'direct' }, type: 'message' },
-          { eventId: '' },
-        ),
+        raw: inboundWire({ place: 'p1', type: 'message' }, { eventId: '' }),
       },
       {
         name: 'question_answer без requestId',
         raw: inboundWire({
           data: 'allow',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           type: 'question_answer',
         }),
       },
       {
-        name: 'пустой chatId',
+        name: 'пустой place',
         raw: inboundWire({
-          place: { chatId: '', kind: 'direct' },
+          place: '',
+          text: 'hi',
           type: 'message',
         }),
       },
       {
-        name: 'topic без topicId',
+        name: 'place с пробелом',
         raw: inboundWire({
-          place: { chatId: 'c', kind: 'topic' },
+          place: 'tg1:d:1 2',
+          text: 'hi',
           type: 'message',
         }),
       },
       {
-        name: 'пустой topicId',
+        name: 'place с табом',
         raw: inboundWire({
-          place: { chatId: 'c', kind: 'topic', topicId: '' },
+          place: 'tg1:d:1\t2',
+          text: 'hi',
+          type: 'message',
+        }),
+      },
+      {
+        name: 'structural place (старая форма)',
+        raw: inboundWire({
+          place: { chatId: 'c', kind: 'direct' },
+          text: 'hi',
           type: 'message',
         }),
       },
       {
         name: 'версия 2',
-        raw: inboundWire(
-          { place: { chatId: 'c', kind: 'direct' }, type: 'message' },
-          { v: 2 },
-        ),
+        raw: inboundWire({ place: 'p1', type: 'message' }, { v: 2 }),
       },
       {
         name: 'пустой data',
         raw: inboundWire({
           data: '',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: 'r1',
           type: 'question_answer',
         }),
@@ -115,7 +122,7 @@ void describe('inbound encode/decode', () => {
         name: 'пустой requestId',
         raw: inboundWire({
           data: 'allow',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: '',
           type: 'question_answer',
         }),
@@ -123,7 +130,7 @@ void describe('inbound encode/decode', () => {
       {
         name: 'text не строка',
         raw: inboundWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: 1,
           type: 'message',
         }),
@@ -131,14 +138,14 @@ void describe('inbound encode/decode', () => {
       {
         name: 'message без text',
         raw: inboundWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           type: 'message',
         }),
       },
       {
         name: 'message с пустым text',
         raw: inboundWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: '',
           type: 'message',
         }),
@@ -146,7 +153,7 @@ void describe('inbound encode/decode', () => {
       {
         name: 'старый type user_message',
         raw: inboundWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: 'hi',
           type: 'user_message',
         }),
@@ -155,7 +162,7 @@ void describe('inbound encode/decode', () => {
         name: 'старый type callback',
         raw: inboundWire({
           data: 'allow',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: 'r1',
           type: 'callback',
         }),

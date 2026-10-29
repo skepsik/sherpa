@@ -1,15 +1,15 @@
-import type { Place } from '@sherpa/contract';
-
 import type {
   AccessFilter,
   MappedUpdate,
   TelegramCallbackQuery,
   TelegramMessage,
+  TelegramPlace,
   TelegramUpdate,
 } from './types';
 
 import { isAllowedSender } from './access';
 import { tryUnpackCallbackData } from './callback-data';
+import { encodePlaceId } from './place-id';
 
 const IGNORE: MappedUpdate = {
   answerCallbackQueryId: null,
@@ -34,7 +34,9 @@ export function mapTelegramUpdate(
  * Личка → `direct`; форумный топик с `message_thread_id` → `topic`.
  * General без thread / прочие чаты → `null`.
  */
-function findPlace(message: TelegramMessage): null | Place {
+function findTelegramPlaceFromMessage(
+  message: TelegramMessage,
+): null | TelegramPlace {
   if (message.chat.type === 'private') {
     return { chatId: String(message.chat.id), kind: 'direct' };
   }
@@ -58,14 +60,14 @@ function mapMessage(
   const chatId = String(message.chat.id);
   if (!isAllowedSender(access, userId, chatId)) return IGNORE;
 
-  const place = findPlace(message);
-  if (!place) return IGNORE;
+  const telegramPlace = findTelegramPlaceFromMessage(message);
+  if (!telegramPlace) return IGNORE;
 
   return {
     answerCallbackQueryId: null,
     inbound: {
       event: {
-        place,
+        place: encodePlaceId(telegramPlace),
         text: message.text,
         type: 'message',
       },
@@ -91,8 +93,8 @@ function mapQuestionAnswer(
   const chatId = String(message.chat.id);
   if (!isAllowedSender(access, userId, chatId)) return answered;
 
-  const place = findPlace(message);
-  if (!place) return answered;
+  const telegramPlace = findTelegramPlaceFromMessage(message);
+  if (!telegramPlace) return answered;
 
   if (query.data === undefined) return answered;
 
@@ -104,7 +106,7 @@ function mapQuestionAnswer(
     inbound: {
       event: {
         data: payload.data,
-        place,
+        place: encodePlaceId(telegramPlace),
         requestId: payload.requestId,
         type: 'question_answer',
       },

@@ -46,7 +46,7 @@ void describe('channel WebSocket', () => {
     assert.equal(
       channel.tryPublishInbound({
         event: {
-          place: { chatId: '1', kind: 'direct' },
+          place: 'tg1:d:1',
           text: 'привет',
           type: 'message',
         },
@@ -57,7 +57,7 @@ void describe('channel WebSocket', () => {
 
     assert.deepEqual(tryDecodeInbound(await messages.next()), {
       event: {
-        place: { chatId: '1', kind: 'direct' },
+        place: 'tg1:d:1',
         text: 'привет',
         type: 'message',
       },
@@ -66,7 +66,7 @@ void describe('channel WebSocket', () => {
 
     client.send(
       encodeOutbound('cmd-1', {
-        place: { chatId: '1', kind: 'direct' },
+        place: 'tg1:d:1',
         text: 'ответ',
         type: 'send_message',
       }),
@@ -120,7 +120,7 @@ void describe('channel WebSocket', () => {
     assert.equal(
       channel.tryPublishInbound({
         event: {
-          place: { chatId: '1', kind: 'direct' },
+          place: 'tg1:d:1',
           text: 'x',
           type: 'message',
         },
@@ -170,14 +170,14 @@ void describe('channel WebSocket', () => {
 
     client.send(
       encodeOutbound('id-a', {
-        place: { chatId: '1', kind: 'direct' },
+        place: 'tg1:d:1',
         text: 'a',
         type: 'send_message',
       }),
     );
     client.send(
       encodeOutbound('id-b', {
-        place: { chatId: '1', kind: 'direct' },
+        place: 'tg1:d:1',
         text: 'b',
         type: 'send_message',
       }),
@@ -212,7 +212,7 @@ void describe('channel WebSocket', () => {
     assert.equal(
       channel.tryPublishInbound({
         event: {
-          place: { chatId: '1', kind: 'direct' },
+          place: 'tg1:d:1',
           text: 'только второму',
           type: 'message',
         },
@@ -238,7 +238,7 @@ void describe('channel WebSocket', () => {
     assert.equal(
       channel.tryPublishInbound({
         event: {
-          place: { chatId: '1', kind: 'direct' },
+          place: 'tg1:d:1',
           text: 'lost',
           type: 'message',
         },
