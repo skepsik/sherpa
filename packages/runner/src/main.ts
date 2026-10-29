@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { createChannelClient } from './channel';
 import { loadRunnerConfig } from './config';
+import { createInboundRouter } from './inbound-router';
+import { openRegistry } from './registry';
 
 const repoRoot = resolve(
   fileURLToPath(new URL('.', import.meta.url)),
@@ -12,24 +14,24 @@ const repoRoot = resolve(
 loadDotenv({ path: resolve(repoRoot, '.env') });
 
 const config = loadRunnerConfig();
+const registry = openRegistry(config.registry);
 
 const channel = createChannelClient({
   config: config.channel,
-  onInbound: (inbound) => {
-    console.log(
-      'inbound',
-      inbound.eventId,
-      inbound.event.type,
-      inbound.event.place,
-    );
-  },
+  onInbound: (inbound) => router.handleInbound(inbound),
+});
+
+const router = createInboundRouter({
+  findCwdByPlaceKey: (key) => registry.findCwdByPlaceKey(key),
+  send: (command) => channel.send(command),
 });
 
 await channel.start();
-console.log('@sherpa/runner: channel connected');
+console.log('@sherpa/runner: channel connected, registry open');
 
 async function shutdown() {
   await channel.stop();
+  registry.close();
   process.exit(0);
 }
 

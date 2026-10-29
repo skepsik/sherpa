@@ -66,11 +66,25 @@ Default таймаут ожидания исхода — 60 с.
 - Обычный обрыв: backoff reconnect; pending → `unknown`.
 - Close `1000` / reason `displaced`: **без** auto-reconnect. Клиент останавливается; **процесс раннера жив** (лог). Восстановление — рестарт процесса.
 
+## Маршрутизация inbound
+
+Процесс: connect канала → открыть реестр → подписка на inbound.
+
+1. Дедуп `eventId` (in-memory набор на процесс). Повтор — тихий drop + лог; lookup и ответы не делаются. После рестарта раннера набор пуст: тот же `eventId` с бота после рестарта бота+раннера может обработаться снова.
+2. Lookup `places` по opaque `Place`.
+3. Нет строки — `send_message` «место вне реестра» **с id этого места** в тексте; в очередь сообщений не ставится.
+4. `message` при наличии строки — job в очередь сообщений места; один serial-drain на место (stub: `busy` → «Принято.» → `idle`). Busy-reject пользователю нет.
+5. `question_answer` — **не** в FIFO сообщений; stub-ack «Принято.» по отдельному пути (задел под подтверждения эпиков 5–6).
+6. Сбой outbound в drain — лог, job не крутится в вечном retry, слот освобождается, берётся следующий.
+
+Проверка вручную: поднять бота и раннер, seed места (`npm run seed -w @sherpa/runner`), написать в seed-Place — stub «Принято.»; в неизвестный Place — ответ «вне реестра» с id.
+
 ## Запуск
 
 ```bash
 # из корня репо (бот уже слушает канал)
 cp .env.example .env   # канал + SHERPA_REGISTRY_PATH
+npm run seed -w @sherpa/runner -- --cwd … --name … --description … --place …
 npm run dev:runner
 ```
 
@@ -80,4 +94,5 @@ npm run dev:runner
 - `openRegistry` → `{ seedWorkdirPlace, findCwdByPlaceKey, insertWorkdir, insertPlace, … }`.
 - `normalizeWorkdirPath` — нормализация `cwd` перед записью.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
+- `createInboundRouter({ findCwdByPlaceKey, send })` → `{ handleInbound }`.
 - `classifyOutboundOutcome` — сверка исхода с командой.

@@ -16,3 +16,9 @@ export type {
   WorkdirInput,
   WorkdirRecord,
 } from './registry';
+export type {
+  InboundOutboundSend,
+  InboundRouter,
+  InboundRouterDeps,
+  MessageJob,
+} from './routing';
