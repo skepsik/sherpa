@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type {
-  OutboundCreateTopic,
-  OutboundCreateTopicOk,
+  OutboundCreatePlace,
+  OutboundCreatePlaceOk,
   OutboundError,
   OutboundErrorCode,
   OutboundQuestionOk,
@@ -20,7 +20,7 @@ import {
   tryDecodeOutbound,
   tryDecodeOutboundResult,
 } from '../src/outbound';
-import { isTopicPlace } from '../src/place';
+import { WIRE_VERSION } from '../src/wire';
 
 function outboundCommandWire(
   command: unknown,
@@ -49,9 +49,13 @@ function outboundResultWire(
 }
 
 void describe('outbound encode/decode', () => {
+  void it('WIRE_VERSION === 1', () => {
+    assert.equal(WIRE_VERSION, 1);
+  });
+
   void it('roundtrip send_message', () => {
     const command: OutboundSendMessage = {
-      place: { chatId: 'chat-1', kind: 'direct' },
+      place: 'tg1:d:chat-1',
       text: 'ответ',
       type: 'send_message',
     };
@@ -65,7 +69,7 @@ void describe('outbound encode/decode', () => {
         { data: 'allow', label: 'Разрешить' },
         { data: 'deny', label: 'Отклонить' },
       ],
-      place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
+      place: 'tg1:t:chat-2:t-9',
       requestId: 'perm-42',
       text: 'Нужен доступ?',
       type: 'send_question',
@@ -74,40 +78,31 @@ void describe('outbound encode/decode', () => {
     assert.deepEqual(decoded, { command, id: 'c2' });
   });
 
-  void it('roundtrip create_topic + успешный результат', () => {
-    const command: OutboundCreateTopic = {
-      chatId: 'supergroup-1',
+  void it('roundtrip create_place + успешный результат', () => {
+    const command: OutboundCreatePlace = {
+      place: 'tg1:t:supergroup-1:1',
       title: 'проект-alpha',
-      type: 'create_topic',
+      type: 'create_place',
     };
     assert.deepEqual(tryDecodeOutbound(encodeOutbound('c3', command)), {
       command,
       id: 'c3',
     });
 
-    const result: OutboundCreateTopicOk = {
-      place: {
-        chatId: 'supergroup-1',
-        kind: 'topic',
-        topicId: 'new-topic-7',
-      },
-      type: 'create_topic_ok',
+    const result: OutboundCreatePlaceOk = {
+      place: 'tg1:t:supergroup-1:new-topic-7',
+      type: 'create_place_ok',
     };
     const decodedResult = tryDecodeOutboundResult(
       encodeOutboundResult('c3', result),
     );
     assert.deepEqual(decodedResult, { id: 'c3', result });
-    assert.ok(
-      decodedResult &&
-        decodedResult.result.type === 'create_topic_ok' &&
-        isTopicPlace(decodedResult.result.place),
-    );
   });
 
   void it('roundtrip resolve_question', () => {
     const command: OutboundResolveQuestion = {
       messageId: 'msg-9',
-      place: { chatId: 'chat-2', kind: 'topic', topicId: 't-9' },
+      place: 'tg1:t:chat-2:t-9',
       text: 'выбрано: allow',
       type: 'resolve_question',
     };
@@ -120,7 +115,7 @@ void describe('outbound encode/decode', () => {
   void it('roundtrip set_status busy|idle', () => {
     for (const status of ['busy', 'idle'] as const) {
       const command: OutboundSetStatus = {
-        place: { chatId: 'chat-1', kind: 'direct' },
+        place: 'tg1:d:chat-1',
         status,
         type: 'set_status',
       };
@@ -133,7 +128,7 @@ void describe('outbound encode/decode', () => {
 
   void it('roundtrip отказ транспорта — все OutboundErrorCode', () => {
     const codes: OutboundErrorCode[] = [
-      'create_topic_failed',
+      'place_create_failed',
       'place_unavailable',
       'send_failed',
       'transport_rejected',
@@ -151,8 +146,8 @@ void describe('outbound encode/decode', () => {
       );
     }
     const withMeta: OutboundError = {
-      code: 'create_topic_failed',
-      commandType: 'create_topic',
+      code: 'place_create_failed',
+      commandType: 'create_place',
       message: 'forum topics disabled',
       type: 'error',
     };
@@ -190,7 +185,7 @@ void describe('outbound encode/decode', () => {
 
   void it('отказ на невалидный wire команды', () => {
     const validSend = {
-      place: { chatId: 'c', kind: 'direct' },
+      place: 'p1',
       text: 'hi',
       type: 'send_message',
     };
@@ -203,7 +198,7 @@ void describe('outbound encode/decode', () => {
       {
         name: 'send_message без text',
         raw: outboundCommandWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           type: 'send_message',
         }),
       },
@@ -212,35 +207,33 @@ void describe('outbound encode/decode', () => {
         raw: outboundCommandWire(validSend, { id: '' }),
       },
       {
-        name: 'пустой chatId',
+        name: 'пустой place',
         raw: outboundCommandWire({
-          place: { chatId: '', kind: 'direct' },
+          place: '',
           text: 'hi',
           type: 'send_message',
         }),
       },
       {
-        name: 'topic без topicId',
+        name: 'place с whitespace',
         raw: outboundCommandWire({
-          place: { chatId: 'c', kind: 'topic' },
+          place: 'a b',
           text: 'hi',
           type: 'send_message',
         }),
       },
       {
-        name: 'send_question с пустым topicId',
+        name: 'structural place',
         raw: outboundCommandWire({
-          buttons: [{ data: 'allow', label: 'Ok' }],
-          place: { chatId: 'c', kind: 'topic', topicId: '' },
-          requestId: 'r1',
+          place: { chatId: 'c', kind: 'direct' },
           text: 'hi',
-          type: 'send_question',
+          type: 'send_message',
         }),
       },
       {
         name: 'пустой text',
         raw: outboundCommandWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: '',
           type: 'send_message',
         }),
@@ -249,7 +242,7 @@ void describe('outbound encode/decode', () => {
         name: 'пустые buttons',
         raw: outboundCommandWire({
           buttons: [],
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: 'r1',
           text: 'q',
           type: 'send_question',
@@ -259,7 +252,7 @@ void describe('outbound encode/decode', () => {
         name: 'пустой requestId',
         raw: outboundCommandWire({
           buttons: [{ data: 'allow', label: 'Ok' }],
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: '',
           text: 'q',
           type: 'send_question',
@@ -269,7 +262,7 @@ void describe('outbound encode/decode', () => {
         name: 'пустой data кнопки',
         raw: outboundCommandWire({
           buttons: [{ data: '', label: 'Ok' }],
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: 'r1',
           text: 'q',
           type: 'send_question',
@@ -279,25 +272,33 @@ void describe('outbound encode/decode', () => {
         name: 'пустой label кнопки',
         raw: outboundCommandWire({
           buttons: [{ data: 'allow', label: '' }],
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           requestId: 'r1',
           text: 'q',
           type: 'send_question',
         }),
       },
       {
-        name: 'create_topic пустой chatId',
+        name: 'create_place пустой place',
         raw: outboundCommandWire({
-          chatId: '',
+          place: '',
           title: 't',
-          type: 'create_topic',
+          type: 'create_place',
         }),
       },
       {
-        name: 'create_topic пустой title',
+        name: 'create_place пустой title',
+        raw: outboundCommandWire({
+          place: 'parent',
+          title: '',
+          type: 'create_place',
+        }),
+      },
+      {
+        name: 'старый create_topic',
         raw: outboundCommandWire({
           chatId: 'sg',
-          title: '',
+          title: 't',
           type: 'create_topic',
         }),
       },
@@ -318,7 +319,7 @@ void describe('outbound encode/decode', () => {
         name: 'resolve_question пустой messageId',
         raw: outboundCommandWire({
           messageId: '',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: 'x',
           type: 'resolve_question',
         }),
@@ -327,7 +328,7 @@ void describe('outbound encode/decode', () => {
         name: 'resolve_question пустой text',
         raw: outboundCommandWire({
           messageId: 'm1',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: '',
           type: 'resolve_question',
         }),
@@ -335,7 +336,7 @@ void describe('outbound encode/decode', () => {
       {
         name: 'set_status неизвестный status',
         raw: outboundCommandWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           status: 'thinking',
           type: 'set_status',
         }),
@@ -343,7 +344,7 @@ void describe('outbound encode/decode', () => {
       {
         name: 'старый type send_text',
         raw: outboundCommandWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: 'hi',
           type: 'send_text',
         }),
@@ -352,7 +353,7 @@ void describe('outbound encode/decode', () => {
         name: 'старый type edit_text',
         raw: outboundCommandWire({
           messageId: 'm1',
-          place: { chatId: 'c', kind: 'direct' },
+          place: 'p1',
           text: 'x',
           type: 'edit_text',
         }),
@@ -367,9 +368,23 @@ void describe('outbound encode/decode', () => {
     const cases: { name: string; raw: string }[] = [
       { name: 'битый json', raw: '{' },
       {
-        name: 'create_topic_ok с direct',
+        name: 'create_place_ok пустой place',
         raw: outboundResultWire({
-          place: { chatId: 'c', kind: 'direct' },
+          place: '',
+          type: 'create_place_ok',
+        }),
+      },
+      {
+        name: 'create_place_ok structural place',
+        raw: outboundResultWire({
+          place: { chatId: 'c', kind: 'topic', topicId: '1' },
+          type: 'create_place_ok',
+        }),
+      },
+      {
+        name: 'старый create_topic_ok',
+        raw: outboundResultWire({
+          place: 'tg1:t:c:1',
           type: 'create_topic_ok',
         }),
       },
@@ -383,9 +398,18 @@ void describe('outbound encode/decode', () => {
         }),
       },
       {
-        name: 'send_ok с commandType create_topic',
+        name: 'старый create_topic_failed',
         raw: outboundResultWire({
-          commandType: 'create_topic',
+          code: 'create_topic_failed',
+          commandType: 'create_place',
+          message: 'x',
+          type: 'error',
+        }),
+      },
+      {
+        name: 'send_ok с commandType create_place',
+        raw: outboundResultWire({
+          commandType: 'create_place',
           type: 'send_ok',
         }),
       },
@@ -468,7 +492,7 @@ void describe('outbound encode/decode', () => {
           { commandType: 'send_message', type: 'send_ok' },
           {
             command: {
-              place: { chatId: 'c', kind: 'direct' },
+              place: 'p1',
               text: 'x',
               type: 'send_message',
             },

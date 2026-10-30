@@ -14,7 +14,7 @@ const access: AccessFilter = {
 };
 
 void describe('mapTelegramUpdate', () => {
-  void it('текст в личке → message + eventId; encodeInbound ок', () => {
+  void it('текст в личке → message + opaque place; encodeInbound ок', () => {
     const update: TelegramUpdate = {
       message: {
         chat: { id: 100, type: 'private' },
@@ -27,7 +27,7 @@ void describe('mapTelegramUpdate', () => {
     assert.equal(mapped.answerCallbackQueryId, null);
     assert.deepEqual(mapped.inbound, {
       event: {
-        place: { chatId: '100', kind: 'direct' },
+        place: 'tg1:d:100',
         text: 'привет',
         type: 'message',
       },
@@ -40,7 +40,7 @@ void describe('mapTelegramUpdate', () => {
     assert.deepEqual(decoded, mapped.inbound);
   });
 
-  void it('текст в топике форума → Place topic', () => {
+  void it('текст в топике форума → opaque Place topic', () => {
     const update: TelegramUpdate = {
       message: {
         chat: { id: -200, type: 'supergroup' },
@@ -51,11 +51,7 @@ void describe('mapTelegramUpdate', () => {
       update_id: 8,
     };
     const mapped = mapTelegramUpdate(update, access);
-    assert.deepEqual(mapped.inbound?.event.place, {
-      chatId: '-200',
-      kind: 'topic',
-      topicId: '99',
-    });
+    assert.deepEqual(mapped.inbound?.event.place, 'tg1:t:-200:99');
   });
 
   void it('callback с валидным pack → question_answer + answer id', () => {
@@ -78,7 +74,7 @@ void describe('mapTelegramUpdate', () => {
     assert.deepEqual(mapped.inbound, {
       event: {
         data: 'yes',
-        place: { chatId: '100', kind: 'direct' },
+        place: 'tg1:d:100',
         requestId: 'req-1',
         type: 'question_answer',
       },

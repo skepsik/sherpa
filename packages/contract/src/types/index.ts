@@ -11,8 +11,8 @@ export type {
   OutboundCommand,
   OutboundCommandEnvelope,
   OutboundCommandType,
-  OutboundCreateTopic,
-  OutboundCreateTopicOk,
+  OutboundCreatePlace,
+  OutboundCreatePlaceOk,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
@@ -29,6 +29,6 @@ export type {
   OutboundStatus,
 } from './outbound';
 
-export type { Place, TopicPlace } from './place';
+export type { Place } from './place';
 
 export type { WireDirection, WireVersion } from './wire';

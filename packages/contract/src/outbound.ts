@@ -2,8 +2,8 @@ import type {
   OutboundCommand,
   OutboundCommandEnvelope,
   OutboundCommandType,
-  OutboundCreateTopic,
-  OutboundCreateTopicOk,
+  OutboundCreatePlace,
+  OutboundCreatePlaceOk,
   OutboundError,
   OutboundErrorCode,
   OutboundInlineButton,
@@ -29,18 +29,18 @@ export const OUTBOUND_COMMAND_TYPES = [
   'send_question',
   'resolve_question',
   'set_status',
-  'create_topic',
+  'create_place',
 ] as const satisfies readonly OutboundCommandType[];
 
 export const OUTBOUND_ERROR_CODES = [
-  'create_topic_failed',
+  'place_create_failed',
   'place_unavailable',
   'send_failed',
   'transport_rejected',
 ] as const satisfies readonly OutboundErrorCode[];
 
 export const OUTBOUND_RESULT_TYPES = [
-  'create_topic_ok',
+  'create_place_ok',
   'error',
   'question_ok',
   'send_ok',
@@ -124,8 +124,8 @@ function findCommand(value: unknown): null | OutboundCommand {
   if (!isRecord(value)) return null;
   if (!isCommandType(value.type)) return null;
   switch (value.type) {
-    case 'create_topic':
-      return findCreateTopic(value);
+    case 'create_place':
+      return findCreatePlace(value);
     case 'resolve_question':
       return findResolveQuestion(value);
     case 'send_message':
@@ -139,22 +139,22 @@ function findCommand(value: unknown): null | OutboundCommand {
   }
 }
 
-function findCreateTopic(
+function findCreatePlace(
   value: Record<string, unknown>,
-): null | OutboundCreateTopic {
-  const chatId = findNonEmptyString(value.chatId);
-  if (!chatId) return null;
+): null | OutboundCreatePlace {
+  const place = findPlace(value.place);
+  if (!place) return null;
   const title = findNonEmptyString(value.title);
   if (!title) return null;
-  return { chatId, title, type: 'create_topic' };
+  return { place, title, type: 'create_place' };
 }
 
-function findCreateTopicOk(
+function findCreatePlaceOk(
   value: Record<string, unknown>,
-): null | OutboundCreateTopicOk {
+): null | OutboundCreatePlaceOk {
   const place = findPlace(value.place);
-  if (!place || place.kind !== 'topic') return null;
-  return { place, type: 'create_topic_ok' };
+  if (!place) return null;
+  return { place, type: 'create_place_ok' };
 }
 
 function findError(value: Record<string, unknown>): null | OutboundError {
@@ -223,8 +223,8 @@ function findResult(value: unknown): null | OutboundResult {
   if (!isRecord(value)) return null;
   if (!isResultType(value.type)) return null;
   switch (value.type) {
-    case 'create_topic_ok':
-      return findCreateTopicOk(value);
+    case 'create_place_ok':
+      return findCreatePlaceOk(value);
     case 'error':
       return findError(value);
     case 'question_ok':

@@ -1,9 +1,5 @@
 /**
- * Место разговора на границе транспорт ↔ раннер:
- * личный чат (`direct`) или топик (`topic`). Идентификаторы opaque для транспорта.
+ * Непрозрачный id места на границе транспорт ↔ раннер.
+ * Непустая строка без whitespace; формат — зона транспорта.
  */
-export type Place =
-  | { chatId: string; kind: 'direct' }
-  | { chatId: string; kind: 'topic'; topicId: string };
-
-export type TopicPlace = Extract<Place, { kind: 'topic' }>;
+export type Place = string;

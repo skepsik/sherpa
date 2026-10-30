@@ -20,12 +20,8 @@ void describe('notifyRunnerUnavailable', () => {
       },
     };
 
-    await notifyRunnerUnavailable(api, { chatId: '10', kind: 'direct' });
-    await notifyRunnerUnavailable(api, {
-      chatId: '-100',
-      kind: 'topic',
-      topicId: '3',
-    });
+    await notifyRunnerUnavailable(api, 'tg1:d:10');
+    await notifyRunnerUnavailable(api, 'tg1:t:-100:3');
 
     assert.deepEqual(sent, [
       { chatId: '10', other: {}, text: RUNNER_UNAVAILABLE_TEXT },
@@ -35,5 +31,20 @@ void describe('notifyRunnerUnavailable', () => {
         text: RUNNER_UNAVAILABLE_TEXT,
       },
     ]);
+  });
+
+  void it('неизвестный place id — без sendMessage', async () => {
+    let called = false;
+    const api: NotifyApi = {
+      sendMessage: async () => {
+        called = true;
+        return { message_id: 1 } as Awaited<
+          ReturnType<NotifyApi['sendMessage']>
+        >;
+      },
+    };
+
+    await notifyRunnerUnavailable(api, 'not-a-place');
+    assert.equal(called, false);
   });
 });

@@ -61,7 +61,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '100', kind: 'direct' },
+      place: 'tg1:d:100',
       text: 'привет',
       type: 'send_message',
     });
@@ -89,7 +89,7 @@ void describe('executeOutbound', () => {
     });
 
     await executeOutbound(api, {
-      place: { chatId: '-100', kind: 'topic', topicId: '55' },
+      place: 'tg1:t:-100:55',
       text: 'ход',
       type: 'send_message',
     });
@@ -98,6 +98,32 @@ void describe('executeOutbound', () => {
       chatId: '-100',
       other: { message_thread_id: 55 },
       text: 'ход',
+    });
+  });
+
+  void it('неизвестный place id → place_unavailable без API', async () => {
+    let called = false;
+    const api = mockApi({
+      sendMessage: async () => {
+        called = true;
+        return { message_id: 1 } as Awaited<
+          ReturnType<OutboundApi['sendMessage']>
+        >;
+      },
+    });
+
+    const execution = await executeOutbound(api, {
+      place: 'garbage',
+      text: 'x',
+      type: 'send_message',
+    });
+
+    assert.equal(called, false);
+    assert.deepEqual(execution, {
+      code: 'place_unavailable',
+      commandType: 'send_message',
+      message: 'unknown place id',
+      type: 'error',
     });
   });
 
@@ -113,7 +139,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'x'.repeat(TELEGRAM_TEXT_MAX_CHARS + 1),
       type: 'send_message',
     });
@@ -138,7 +164,7 @@ void describe('executeOutbound', () => {
 
     const execution = await executeOutbound(api, {
       messageId: '1',
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'x'.repeat(TELEGRAM_TEXT_MAX_CHARS + 1),
       type: 'resolve_question',
     });
@@ -168,7 +194,7 @@ void describe('executeOutbound', () => {
         { data: 'allow', label: 'Да' },
         { data: 'deny', label: 'Нет' },
       ],
-      place: { chatId: '2', kind: 'direct' },
+      place: 'tg1:d:2',
       requestId: 'perm-1',
       text: 'доступ?',
       type: 'send_question',
@@ -207,7 +233,7 @@ void describe('executeOutbound', () => {
 
     const execution = await executeOutbound(api, {
       buttons: [{ data: 'd'.repeat(40), label: 'Ok' }],
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       requestId: 'r'.repeat(40),
       text: '?',
       type: 'send_question',
@@ -234,7 +260,7 @@ void describe('executeOutbound', () => {
 
     const execution = await executeOutbound(api, {
       messageId: '11',
-      place: { chatId: '3', kind: 'direct' },
+      place: 'tg1:d:3',
       text: 'выбрано',
       type: 'resolve_question',
     });
@@ -260,7 +286,7 @@ void describe('executeOutbound', () => {
 
     const execution = await executeOutbound(api, {
       messageId: '99',
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'то же',
       type: 'resolve_question',
     });
@@ -288,7 +314,7 @@ void describe('executeOutbound', () => {
 
     for (const status of ['busy', 'idle'] as const) {
       const execution = await executeOutbound(api, {
-        place: { chatId: '1', kind: 'direct' },
+        place: 'tg1:d:1',
         status,
         type: 'set_status',
       });
@@ -298,6 +324,32 @@ void describe('executeOutbound', () => {
       });
     }
     assert.equal(called, false);
+  });
+
+  void it('set_status неизвестный place → place_unavailable', async () => {
+    let called = false;
+    const api = mockApi({
+      sendMessage: async () => {
+        called = true;
+        return { message_id: 1 } as Awaited<
+          ReturnType<OutboundApi['sendMessage']>
+        >;
+      },
+    });
+
+    const execution = await executeOutbound(api, {
+      place: 'garbage',
+      status: 'busy',
+      type: 'set_status',
+    });
+
+    assert.equal(called, false);
+    assert.deepEqual(execution, {
+      code: 'place_unavailable',
+      commandType: 'set_status',
+      message: 'unknown place id',
+      type: 'error',
+    });
   });
 
   void it('429: повтор после retry_after, затем успех', async () => {
@@ -317,7 +369,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'ok',
       type: 'send_message',
     });
@@ -341,7 +393,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'ok',
       type: 'send_message',
     });
@@ -363,7 +415,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'ok',
       type: 'send_message',
     });
@@ -384,7 +436,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'ok',
       type: 'send_message',
     });
@@ -405,7 +457,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'ok',
       type: 'send_message',
     });
@@ -416,7 +468,7 @@ void describe('executeOutbound', () => {
     }
   });
 
-  void it('create_topic → create_topic_ok с Place topic', async () => {
+  void it('create_place → create_place_ok с opaque topic id', async () => {
     const api = mockApi({
       createForumTopic: async (chatId, name) => {
         assert.equal(chatId, '-1001');
@@ -430,18 +482,18 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      chatId: '-1001',
+      place: 'tg1:t:-1001:1',
       title: 'alpha',
-      type: 'create_topic',
+      type: 'create_place',
     });
 
     assert.deepEqual(execution, {
-      place: { chatId: '-1001', kind: 'topic', topicId: '77' },
-      type: 'create_topic_ok',
+      place: 'tg1:t:-1001:77',
+      type: 'create_place_ok',
     });
   });
 
-  void it('create_topic API-отказ → create_topic_failed', async () => {
+  void it('create_place API-отказ → place_create_failed', async () => {
     const api = mockApi({
       createForumTopic: async () => {
         throw grammyError(400, 'Bad Request: topics are disabled');
@@ -449,15 +501,39 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      chatId: '-1001',
+      place: 'tg1:t:-1001:1',
       title: 'x',
-      type: 'create_topic',
+      type: 'create_place',
     });
 
     assert.deepEqual(execution, {
-      code: 'create_topic_failed',
-      commandType: 'create_topic',
+      code: 'place_create_failed',
+      commandType: 'create_place',
       message: 'Bad Request: topics are disabled',
+      type: 'error',
+    });
+  });
+
+  void it('create_place с неизвестным parent → place_unavailable', async () => {
+    let called = false;
+    const api = mockApi({
+      createForumTopic: async () => {
+        called = true;
+        return { icon_color: 0, message_thread_id: 1, name: 'x' };
+      },
+    });
+
+    const execution = await executeOutbound(api, {
+      place: 'bad-parent',
+      title: 'x',
+      type: 'create_place',
+    });
+
+    assert.equal(called, false);
+    assert.deepEqual(execution, {
+      code: 'place_unavailable',
+      commandType: 'create_place',
+      message: 'unknown place id',
       type: 'error',
     });
   });
@@ -470,7 +546,7 @@ void describe('executeOutbound', () => {
     });
 
     const execution = await executeOutbound(api, {
-      place: { chatId: '1', kind: 'direct' },
+      place: 'tg1:d:1',
       text: 'x',
       type: 'send_message',
     });
