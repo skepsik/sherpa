@@ -28,6 +28,8 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
 
+OpenCode: `expressLaunchRights(launchRights)` — снимок → `permissions` для запуска (без живой сессии). Эпик 5 подключает конфиг к старту; ask UI и `append_file` — не здесь. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
+
 ### Seed одного каталога и места
 
 Opaque `Place` для `--place` — тот же id, что на проводе (в проверке e2e: id из ответа «вне реестра», issue-3-4).
@@ -121,6 +123,7 @@ npm run dev:runner
 - `normalizeWorkdirPath` — нормализация `cwd` / `grant.path` перед записью.
 - `validateDenyPattern` — fail-fast валидация диалекта deny.
 - `resolvePathAccess` / `buildLaunchRights` / `RightsConfigError` — резолв вердикта пути и плоского снимка запуска.
+- `expressLaunchRights` / `OpenCodeExpressError` — выражение снимка в permissions OpenCode (`src/adapters/opencode`).
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, send })` → `{ handleInbound }`.
 - `classifyOutboundOutcome` — сверка исхода с командой.
