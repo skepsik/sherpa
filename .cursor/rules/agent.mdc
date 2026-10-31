@@ -50,10 +50,11 @@ alwaysApply: false
 
 По команде владельца («нарежь эпик `<P>`» и т.п.):
 
-1. Ты (gate) режешь `issues/issue-<P>-<K>.md` по skill **`work-issue-cold-start-spec`** (`issues.mdc`).
+1. Ты (gate) режешь набор `issues/issue-<P>-*.md` по skill **`work-issue-cold-start-spec`** (`issues.mdc`).
 2. Task **`@slice-audit`** — целостность относительно эпика + каждая постановка по skill (`slice-audit.mdc`). Аудитор файлы не пишет.
 3. Правки по отчёту → снова шаг 2, пока вердикт «ок» или эскалация владельцу (продукт вне эпика и т.п.).
-4. Ок → кратко отчитаться; исполнение — отдельно через `@work`.
+4. `@slice-review` — все issues этого эпика (`slice-review.mdc`). Правка постановок → снова шаг 2.
+5. Аудит «ок» и цикл `@slice-review` закрыт на том же тексте набора → кратко отчитаться; исполнение — отдельно через `@work`.
 
 ## Запуск work
 
@@ -120,6 +121,7 @@ Task оборван → `ops.mdc` § Gate / recovery.
 | `coder-finalize` | форматтер и сверх постановки |
 | `reviewer` | review-маркеры по diff |
 | `slice-audit` | аудит нарезки vs эпик и cold-start |
+| `slice-review` | ревью нарезки эпика через OpenCode |
 | `code-style` | стиль кода |
 | `naming` | имена функций и методов |
 | `git` | ветки, коммиты, merge |
