@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-/** Идемпотентное создание схемы `workdirs` / `places` / `roles`. */
+/** Идемпотентное создание схемы реестра (workdirs…deny_global). */
 export function migrateRegistrySchema(db: DatabaseSync) {
   db.exec('PRAGMA foreign_keys = ON');
 
@@ -34,6 +34,37 @@ export function migrateRegistrySchema(db: DatabaseSync) {
       FOREIGN KEY (cwd) REFERENCES workdirs(cwd)
         ON UPDATE CASCADE
         ON DELETE CASCADE
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS "grant" (
+      cwd TEXT NOT NULL,
+      path TEXT NOT NULL,
+      level TEXT NOT NULL CHECK (level IN ('none', 'ro', 'append', 'rw')),
+      PRIMARY KEY (cwd, path),
+      FOREIGN KEY (cwd) REFERENCES workdirs(cwd)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deny (
+      cwd TEXT NOT NULL,
+      pattern TEXT NOT NULL,
+      PRIMARY KEY (cwd, pattern),
+      CHECK (length(pattern) > 0),
+      FOREIGN KEY (cwd) REFERENCES workdirs(cwd)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deny_global (
+      pattern TEXT PRIMARY KEY NOT NULL,
+      CHECK (length(pattern) > 0)
     )
   `);
 }

@@ -7,6 +7,13 @@ export type {
 export type { ChannelConfig, RunnerConfig } from './config';
 export type { ChannelSendOutcome, ChannelUnknownCause } from './outcome';
 export type {
+  DenyGlobalInput,
+  DenyGlobalRecord,
+  DenyInput,
+  DenyRecord,
+  GrantInput,
+  GrantLevel,
+  GrantRecord,
   PlaceInput,
   PlaceRecord,
   Registry,
@@ -15,6 +22,7 @@ export type {
   SeedWorkdirPlaceResult,
   WorkdirInput,
   WorkdirRecord,
+  WorkdirRights,
 } from './registry';
 export type {
   InboundOutboundSend,

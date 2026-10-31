@@ -1,3 +1,8 @@
+export {
+  DenyPatternError,
+  parseDenyPatternEffect,
+  validateDenyPattern,
+} from './deny-pattern';
 export { migrateRegistrySchema } from './migrate';
 export { normalizeWorkdirPath } from './normalize-path';
-export { openRegistry } from './registry';
+export { openRegistry, WorkdirNotFoundError } from './registry';

@@ -1,3 +1,35 @@
+export type DenyGlobalInput = {
+  pattern: string;
+};
+
+export type DenyGlobalRecord = {
+  pattern: string;
+};
+
+export type DenyInput = {
+  cwd: string;
+  pattern: string;
+};
+
+export type DenyRecord = {
+  cwd: string;
+  pattern: string;
+};
+
+export type GrantInput = {
+  cwd: string;
+  level: GrantLevel;
+  path: string;
+};
+
+export type GrantLevel = 'append' | 'none' | 'ro' | 'rw';
+
+export type GrantRecord = {
+  cwd: string;
+  level: GrantLevel;
+  path: string;
+};
+
 export type PlaceInput = {
   cwd: string;
   key: string;
@@ -15,9 +47,18 @@ export type Registry = {
   close(): void;
   /** Нет ключа — `null`. */
   findCwdByPlaceKey(key: string): null | string;
+  insertDeny(input: DenyInput): DenyRecord;
+  insertDenyGlobal(input: DenyGlobalInput): DenyGlobalRecord;
   insertPlace(input: PlaceInput): PlaceRecord;
   insertWorkdir(input: WorkdirInput): WorkdirRecord;
+  /**
+   * Права cwd одной транзакцией: grant + deny + deny_global.
+   * Нет workdir — ошибка с `code: 'workdir_not_found'`.
+   */
+  loadWorkdirRights(cwd: string): WorkdirRights;
   seedWorkdirPlace(input: SeedWorkdirPlaceInput): SeedWorkdirPlaceResult;
+  /** Upsert по `(cwd, path)`, включая `level: none`. */
+  upsertGrant(input: GrantInput): GrantRecord;
 };
 
 /** Путь к файлу SQLite (`SHERPA_REGISTRY_PATH`). */
@@ -48,4 +89,11 @@ export type WorkdirRecord = {
   cwd: string;
   description: string;
   name: string;
+};
+
+export type WorkdirRights = {
+  cwd: string;
+  denies: DenyRecord[];
+  denyGlobals: DenyGlobalRecord[];
+  grants: GrantRecord[];
 };
