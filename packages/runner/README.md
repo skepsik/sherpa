@@ -18,11 +18,13 @@
 
 ## Реестр
 
-Таблицы: `workdirs`, `places`, `roles` ([`design/data-schema.md`](../../design/data-schema.md)). Миграции идемпотентны при открытии.
+Таблицы: `workdirs`, `places`, `roles`, `grant`, `deny`, `deny_global` ([`design/data-schema.md`](../../design/data-schema.md)). Миграции идемпотентны при открытии.
 
-Запись `cwd` — только через слой реестра с нормализацией (`realpath`: абсолютный путь, без хвостового `/`, без `.` / `..`). Seed сырым SQL в обход слоя — запрещён.
+Запись `workdirs.cwd` и `grant.path` — только через слой реестра с нормализацией (`realpath`: абсолютный путь, без хвостового `/`, без `.` / `..`). Seed сырым SQL в обход слоя — запрещён (в т.ч. для `grant.path` и pattern).
 
 Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
+
+Права cwd: `loadWorkdirRights(cwd)` — одной транзакцией все `grant` / `deny` этого cwd и все `deny_global`. Нет workdir — ошибка `workdir_not_found`. Кэша между вызовами нет.
 
 ### Seed одного каталога и места
 
@@ -39,6 +41,28 @@ npm run seed -w @sherpa/runner -- \
 ```
 
 Скрипт печатает JSON `{ "cwd", "placeKey" }` с нормализованным `cwd`.
+
+### Grant / deny / deny_global вручную
+
+Админки в MVP нет — строки прав заводятся через тот же CLI (слой реестра: нормализация path, валидация pattern).
+
+```bash
+npm run seed -w @sherpa/runner -- grant \
+  --cwd /path/to/workdir \
+  --path /path/to/target \
+  --level ro
+
+npm run seed -w @sherpa/runner -- deny \
+  --cwd /path/to/workdir \
+  --pattern 'write:.onto/**'
+
+npm run seed -w @sherpa/runner -- deny-global \
+  --pattern 'read:**/.env*'
+```
+
+Типичные шаблоны защиты (`.onto/**`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, секреты) в `deny_global` **не подмешиваются кодом** адаптера/раннера — только руками (или клиентом БД через API). Перед агентом проекта (эпик 6) закрой инструкции в `deny_global`.
+
+Примеры pattern: `write:.onto/**`, `read:**/.env*`, `write:!**/.env.example`, `//absolute/path/**`; без префикса = `write:`.
 
 ## Канал WebSocket (клиент)
 
@@ -91,8 +115,9 @@ npm run dev:runner
 ## API (пакет)
 
 - `loadRunnerConfig` / `loadChannelConfig` / `loadRegistryConfig` — env.
-- `openRegistry` → `{ seedWorkdirPlace, findCwdByPlaceKey, insertWorkdir, insertPlace, … }`.
-- `normalizeWorkdirPath` — нормализация `cwd` перед записью.
+- `openRegistry` → `{ seedWorkdirPlace, findCwdByPlaceKey, insertWorkdir, insertPlace, upsertGrant, insertDeny, insertDenyGlobal, loadWorkdirRights, … }`.
+- `normalizeWorkdirPath` — нормализация `cwd` / `grant.path` перед записью.
+- `validateDenyPattern` — fail-fast валидация диалекта deny.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, send })` → `{ handleInbound }`.
 - `classifyOutboundOutcome` — сверка исхода с командой.

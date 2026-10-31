@@ -6,7 +6,13 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, it } from 'node:test';
 
 import { loadRegistryConfig } from '../src/config';
-import { normalizeWorkdirPath, openRegistry } from '../src/registry';
+import {
+  DenyPatternError,
+  normalizeWorkdirPath,
+  openRegistry,
+  validateDenyPattern,
+  WorkdirNotFoundError,
+} from '../src/registry';
 
 void describe('registry', () => {
   const temps: string[] = [];
@@ -25,7 +31,7 @@ void describe('registry', () => {
     );
   });
 
-  void it('пустое хранилище: схема трёх таблиц', () => {
+  void it('пустое хранилище: схема workdirs/places/roles/grant/deny/deny_global', () => {
     const { dbPath, registry } = openTempRegistry(temps);
     registry.close();
 
@@ -39,8 +45,16 @@ void describe('registry', () => {
     ).map((row) => row.name);
 
     assert.deepEqual(
-      names.filter((n) => n === 'places' || n === 'roles' || n === 'workdirs'),
-      ['places', 'roles', 'workdirs'],
+      names.filter(
+        (n) =>
+          n === 'deny' ||
+          n === 'deny_global' ||
+          n === 'grant' ||
+          n === 'places' ||
+          n === 'roles' ||
+          n === 'workdirs',
+      ),
+      ['deny', 'deny_global', 'grant', 'places', 'roles', 'workdirs'],
     );
     db.close();
   });
@@ -234,6 +248,246 @@ void describe('registry', () => {
       .get('place-cascade-upd') as { cwd: string };
     assert.equal(row.cwd, newCwd);
     db.close();
+  });
+
+  void it('grant: upsert с нормализацией path; level none; плохой level — отказ', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'project');
+    const targetPath = join(root, 'shared');
+    mkdirSync(workdirPath);
+    mkdirSync(targetPath);
+
+    const { registry } = openTempRegistry(temps);
+    const { cwd } = registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'd',
+      name: 'n-grant',
+      placeKey: 'p-grant',
+    });
+
+    const first = registry.upsertGrant({
+      cwd,
+      level: 'ro',
+      path: `${root}/x/../shared`,
+    });
+    assert.equal(first.path, resolve(targetPath));
+    assert.equal(first.path.includes('..'), false);
+    assert.equal(first.level, 'ro');
+
+    const lowered = registry.upsertGrant({
+      cwd,
+      level: 'none',
+      path: targetPath,
+    });
+    assert.equal(lowered.level, 'none');
+
+    const rights = registry.loadWorkdirRights(cwd);
+    assert.equal(rights.grants.length, 1);
+    assert.equal(rights.grants[0]?.level, 'none');
+
+    assert.throws(
+      () =>
+        registry.upsertGrant({
+          cwd,
+          level: 'write' as 'rw',
+          path: targetPath,
+        }),
+      /grant\.level/,
+    );
+    registry.close();
+  });
+
+  void it('grant.level CHECK: сырой INSERT плохого level — отказ', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'project');
+    mkdirSync(workdirPath);
+
+    const { dbPath, registry } = openTempRegistry(temps);
+    const { cwd } = registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'd',
+      name: 'n-check',
+      placeKey: 'p-check',
+    });
+    registry.close();
+
+    const db = openSqliteWithFk(dbPath);
+    assert.throws(
+      () =>
+        db
+          .prepare(`INSERT INTO "grant" (cwd, path, level) VALUES (?, ?, ?)`)
+          .run(cwd, cwd, 'full'),
+      /CHECK|constraint/i,
+    );
+    db.close();
+  });
+
+  void it('deny / deny_global: валидный insert; мусор — DenyPatternError', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'project');
+    mkdirSync(workdirPath);
+
+    const { registry } = openTempRegistry(temps);
+    const { cwd } = registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'd',
+      name: 'n-deny',
+      placeKey: 'p-deny',
+    });
+
+    const okPatterns = [
+      'write:.onto/**',
+      'read:**/.env*',
+      'write:!**/.env.example',
+      '//absolute/secret/**',
+      '.claude/',
+    ];
+    for (const pattern of okPatterns) {
+      registry.insertDenyGlobal({ pattern });
+    }
+    registry.insertDeny({ cwd, pattern: 'write:.onto/**' });
+
+    assert.throws(
+      () => registry.insertDenyGlobal({ pattern: 'readx:foo' }),
+      (err: unknown) => err instanceof DenyPatternError,
+    );
+    assert.throws(
+      () => registry.insertDeny({ cwd, pattern: 'Read:secret' }),
+      DenyPatternError,
+    );
+    assert.throws(
+      () => registry.insertDenyGlobal({ pattern: 'read:' }),
+      /пуст/,
+    );
+    assert.throws(() => registry.insertDenyGlobal({ pattern: '!' }), /голый/);
+    assert.throws(
+      () => registry.insertDenyGlobal({ pattern: 'write:!' }),
+      /голый/,
+    );
+
+    assert.throws(
+      () => registry.insertDenyGlobal({ pattern: 'write:.onto/**' }),
+      /UNIQUE|constraint/i,
+    );
+    registry.close();
+  });
+
+  void it('loadWorkdirRights: одна транзакция; нет кэша; неизвестный cwd — отказ', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'project');
+    const otherPath = join(root, 'other');
+    mkdirSync(workdirPath);
+    mkdirSync(otherPath);
+
+    const { dbPath, registry } = openTempRegistry(temps);
+    const { cwd } = registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'd',
+      name: 'n-load',
+      placeKey: 'p-load',
+    });
+
+    registry.upsertGrant({ cwd, level: 'rw', path: otherPath });
+    registry.insertDeny({ cwd, pattern: 'read:**/.env*' });
+    registry.insertDenyGlobal({ pattern: 'AGENTS.md' });
+
+    const first = registry.loadWorkdirRights(cwd);
+    assert.equal(first.cwd, cwd);
+    assert.equal(first.grants.length, 1);
+    assert.equal(first.denies.length, 1);
+    assert.equal(first.denyGlobals.length, 1);
+
+    const db = openSqliteWithFk(dbPath);
+    db.prepare(`UPDATE "grant" SET level = ? WHERE cwd = ?`).run('ro', cwd);
+    db.prepare(`INSERT INTO deny_global (pattern) VALUES (?)`).run('CLAUDE.md');
+    db.close();
+
+    const second = registry.loadWorkdirRights(cwd);
+    assert.equal(second.grants[0]?.level, 'ro');
+    assert.equal(second.denyGlobals.length, 2);
+
+    const missing = join(root, 'no-such-workdir');
+    mkdirSync(missing);
+    assert.throws(
+      () => registry.loadWorkdirRights(missing),
+      (err: unknown) =>
+        err instanceof WorkdirNotFoundError && err.code === 'workdir_not_found',
+    );
+    registry.close();
+  });
+
+  void it('loadWorkdirRights: workdir есть, таблиц прав пусто — пустые списки', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'bare');
+    mkdirSync(workdirPath);
+
+    const { registry } = openTempRegistry(temps);
+    const { cwd } = registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'd',
+      name: 'bare-n',
+      placeKey: 'p-bare',
+    });
+
+    const rights = registry.loadWorkdirRights(cwd);
+    assert.deepEqual(rights.grants, []);
+    assert.deepEqual(rights.denies, []);
+    assert.deepEqual(rights.denyGlobals, []);
+    registry.close();
+  });
+
+  void it('FK CASCADE: удаление workdir убирает grant и deny', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'project');
+    const targetPath = join(root, 'target');
+    mkdirSync(workdirPath);
+    mkdirSync(targetPath);
+
+    const { dbPath, registry } = openTempRegistry(temps);
+    const { cwd } = registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'd',
+      name: 'n-casc-rights',
+      placeKey: 'p-casc-rights',
+    });
+    registry.upsertGrant({ cwd, level: 'append', path: targetPath });
+    registry.insertDeny({ cwd, pattern: '.onto/**' });
+    registry.close();
+
+    const db = openSqliteWithFk(dbPath);
+    db.prepare(`DELETE FROM workdirs WHERE cwd = ?`).run(cwd);
+    const grants = db.prepare(`SELECT COUNT(*) AS n FROM "grant"`).get() as {
+      n: number;
+    };
+    const denies = db.prepare(`SELECT COUNT(*) AS n FROM deny`).get() as {
+      n: number;
+    };
+    assert.equal(grants.n, 0);
+    assert.equal(denies.n, 0);
+    db.close();
+  });
+});
+
+void describe('validateDenyPattern', () => {
+  void it('принимает канонические формы', () => {
+    for (const pattern of [
+      'write:.onto/**',
+      'read:**/.env*',
+      'write:!**/.env.example',
+      '//abs/**',
+      'CLAUDE.md',
+    ]) {
+      validateDenyPattern(pattern);
+    }
+  });
+
+  void it('отклоняет мусор отличимо', () => {
+    assert.throws(() => validateDenyPattern('readx:foo'), DenyPatternError);
+    assert.throws(() => validateDenyPattern('Read:x'), DenyPatternError);
+    assert.throws(() => validateDenyPattern('write:'), DenyPatternError);
+    assert.throws(() => validateDenyPattern('!'), DenyPatternError);
+    assert.throws(() => validateDenyPattern('write:!'), DenyPatternError);
+    assert.throws(() => validateDenyPattern(''), DenyPatternError);
   });
 });
 
