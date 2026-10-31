@@ -26,6 +26,8 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Права cwd: `loadWorkdirRights(cwd)` — одной транзакцией все `grant` / `deny` этого cwd и все `deny_global`. Нет workdir — ошибка `workdir_not_found`. Кэша между вызовами нет.
 
+Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
+
 ### Seed одного каталога и места
 
 Opaque `Place` для `--place` — тот же id, что на проводе (в проверке e2e: id из ответа «вне реестра», issue-3-4).
@@ -118,6 +120,7 @@ npm run dev:runner
 - `openRegistry` → `{ seedWorkdirPlace, findCwdByPlaceKey, insertWorkdir, insertPlace, upsertGrant, insertDeny, insertDenyGlobal, loadWorkdirRights, … }`.
 - `normalizeWorkdirPath` — нормализация `cwd` / `grant.path` перед записью.
 - `validateDenyPattern` — fail-fast валидация диалекта deny.
+- `resolvePathAccess` / `buildLaunchRights` / `RightsConfigError` — резолв вердикта пути и плоского снимка запуска.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, send })` → `{ handleInbound }`.
 - `classifyOutboundOutcome` — сверка исхода с командой.

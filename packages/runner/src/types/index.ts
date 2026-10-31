@@ -25,6 +25,15 @@ export type {
   WorkdirRights,
 } from './registry';
 export type {
+  DenyEffect,
+  DenyEffects,
+  LaunchRights,
+  LaunchRoot,
+  ParsedDeny,
+  PathAccess,
+  ResolveRightsOptions,
+} from './rights';
+export type {
   InboundOutboundSend,
   InboundRouter,
   InboundRouterDeps,
