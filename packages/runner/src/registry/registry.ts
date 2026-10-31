@@ -3,16 +3,41 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import type {
+  DenyGlobalInput,
+  DenyGlobalRecord,
+  DenyInput,
+  DenyRecord,
+  GrantInput,
+  GrantLevel,
+  GrantRecord,
   PlaceInput,
   Registry,
   RegistryConfig,
   SeedWorkdirPlaceInput,
   SeedWorkdirPlaceResult,
   WorkdirInput,
+  WorkdirRights,
 } from '../types/registry';
 
+import { validateDenyPattern } from './deny-pattern';
 import { migrateRegistrySchema } from './migrate';
 import { normalizeWorkdirPath } from './normalize-path';
+
+const GRANT_LEVELS = [
+  'none',
+  'ro',
+  'append',
+  'rw',
+] as const satisfies readonly GrantLevel[];
+
+export class WorkdirNotFoundError extends Error {
+  readonly code = 'workdir_not_found' as const;
+
+  constructor(cwd: string) {
+    super(`loadWorkdirRights: workdir не найден: ${cwd}`);
+    this.name = 'WorkdirNotFoundError';
+  }
+}
 
 /** Открывает (или создаёт) файл SQLite и накатывает схему. */
 export function openRegistry(config: RegistryConfig): Registry {
@@ -35,6 +60,26 @@ export function openRegistry(config: RegistryConfig): Registry {
     `INSERT INTO places (key, cwd, session_id) VALUES (?, ?, ?)`,
   );
   const findCwdStmt = db.prepare(`SELECT cwd FROM places WHERE key = ?`);
+  const findWorkdirStmt = db.prepare(`SELECT cwd FROM workdirs WHERE cwd = ?`);
+  const upsertGrantStmt = db.prepare(
+    `INSERT INTO "grant" (cwd, path, level) VALUES (?, ?, ?)
+     ON CONFLICT(cwd, path) DO UPDATE SET level = excluded.level`,
+  );
+  const insertDenyStmt = db.prepare(
+    `INSERT INTO deny (cwd, pattern) VALUES (?, ?)`,
+  );
+  const insertDenyGlobalStmt = db.prepare(
+    `INSERT INTO deny_global (pattern) VALUES (?)`,
+  );
+  const selectGrantsStmt = db.prepare(
+    `SELECT cwd, path, level FROM "grant" WHERE cwd = ? ORDER BY path`,
+  );
+  const selectDeniesStmt = db.prepare(
+    `SELECT cwd, pattern FROM deny WHERE cwd = ? ORDER BY pattern`,
+  );
+  const selectDenyGlobalsStmt = db.prepare(
+    `SELECT pattern FROM deny_global ORDER BY pattern`,
+  );
 
   function insertWorkdir(input: WorkdirInput) {
     const cwd = normalizeWorkdirPath(input.cwd);
@@ -61,6 +106,66 @@ export function openRegistry(config: RegistryConfig): Registry {
     return row?.cwd ?? null;
   }
 
+  function upsertGrant(input: GrantInput): GrantRecord {
+    const cwd = normalizeWorkdirPath(input.cwd);
+    const path = normalizeWorkdirPath(input.path);
+    const level = ensureGrantLevel(input.level);
+
+    upsertGrantStmt.run(cwd, path, level);
+    return { cwd, level, path };
+  }
+
+  function insertDeny(input: DenyInput): DenyRecord {
+    const cwd = normalizeWorkdirPath(input.cwd);
+    validateDenyPattern(input.pattern);
+    const pattern = input.pattern.trim();
+
+    insertDenyStmt.run(cwd, pattern);
+    return { cwd, pattern };
+  }
+
+  function insertDenyGlobal(input: DenyGlobalInput): DenyGlobalRecord {
+    validateDenyPattern(input.pattern);
+    const pattern = input.pattern.trim();
+
+    insertDenyGlobalStmt.run(pattern);
+    return { pattern };
+  }
+
+  function loadWorkdirRights(cwdInput: string): WorkdirRights {
+    const cwd = normalizeWorkdirPath(cwdInput);
+
+    db.exec('BEGIN');
+    try {
+      const workdir = findWorkdirStmt.get(cwd) as undefined | { cwd: string };
+      if (!workdir) {
+        throw new WorkdirNotFoundError(cwd);
+      }
+
+      const grants = (
+        selectGrantsStmt.all(cwd) as Array<{
+          cwd: string;
+          level: GrantLevel;
+          path: string;
+        }>
+      ).map((row) => ({ cwd: row.cwd, level: row.level, path: row.path }));
+
+      const denies = (
+        selectDeniesStmt.all(cwd) as Array<{ cwd: string; pattern: string }>
+      ).map((row) => ({ cwd: row.cwd, pattern: row.pattern }));
+
+      const denyGlobals = (
+        selectDenyGlobalsStmt.all() as Array<{ pattern: string }>
+      ).map((row) => ({ pattern: row.pattern }));
+
+      db.exec('COMMIT');
+      return { cwd, denies, denyGlobals, grants };
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   function seedWorkdirPlace(
     input: SeedWorkdirPlaceInput,
   ): SeedWorkdirPlaceResult {
@@ -85,10 +190,23 @@ export function openRegistry(config: RegistryConfig): Registry {
       db.close();
     },
     findCwdByPlaceKey,
+    insertDeny,
+    insertDenyGlobal,
     insertPlace,
     insertWorkdir,
+    loadWorkdirRights,
     seedWorkdirPlace,
+    upsertGrant,
   };
+}
+
+function ensureGrantLevel(level: string): GrantLevel {
+  if ((GRANT_LEVELS as readonly string[]).includes(level)) {
+    return level as GrantLevel;
+  }
+  throw new Error(
+    `grant.level: ожидался none|ro|append|rw, получено «${level}»`,
+  );
 }
 
 function validatePlaceKey(key: string) {

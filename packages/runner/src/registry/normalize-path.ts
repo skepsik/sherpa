@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 
 /**
- * Нормализация `workdirs.cwd`: абсолютный путь, без хвостового `/`,
+ * Нормализация `workdirs.cwd` и `grant.path`: абсолютный путь, без хвостового `/`,
  * без сегментов `.` / `..`, через `realpath`.
  * Относительный вход — resolve от cwd процесса, затем realpath.
  */
