@@ -16,6 +16,20 @@
 | `SHERPA_CHANNEL_PORT`       | нет         | bind port, по умолчанию `8787`           |
 | `SHERPA_CHANNEL_PATH`       | нет         | path upgrade, по умолчанию `/v1/channel` |
 
+## Mid-run команды
+
+Пока ход жив, ввод не блокируется. Slash на боте → поле/тип на inbound:
+
+| Команда                            | Inbound                                               |
+| ---------------------------------- | ----------------------------------------------------- |
+| обычный текст                      | `message` без `delivery` (дефолт mid-run — у раннера) |
+| `/interject …`                     | `message` + `delivery: interject`                     |
+| `/after …`                         | `message` + `delivery: after`                         |
+| `/stop`                            | `session_break` (без текста задачи)                   |
+| `/interject` / `/after` без текста | локальный ответ «нужен текст»; на раннер не уходит    |
+
+`@botname` после команды допускается (`/after@MyBot …`).
+
 ## Opaque `Place`
 
 На проводе — непрозрачная строка (`Place`). Кодек Telegram ↔ id только в боте (`src/place-id.ts`); раннер строку не разбирает.

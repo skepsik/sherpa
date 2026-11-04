@@ -25,6 +25,7 @@ void describe('mapTelegramUpdate', () => {
     };
     const mapped = mapTelegramUpdate(update, access);
     assert.equal(mapped.answerCallbackQueryId, null);
+    assert.equal(mapped.userReply, null);
     assert.deepEqual(mapped.inbound, {
       event: {
         place: 'tg1:d:100',
@@ -38,6 +39,93 @@ void describe('mapTelegramUpdate', () => {
       encodeInbound(mapped.inbound.eventId, mapped.inbound.event),
     );
     assert.deepEqual(decoded, mapped.inbound);
+  });
+
+  void it('/after текст → message + delivery after', () => {
+    const update: TelegramUpdate = {
+      message: {
+        chat: { id: 100, type: 'private' },
+        from: { id: 42 },
+        text: '/after сделай потом',
+      },
+      update_id: 70,
+    };
+    const mapped = mapTelegramUpdate(update, access);
+    assert.deepEqual(mapped.inbound, {
+      event: {
+        delivery: 'after',
+        place: 'tg1:d:100',
+        text: 'сделай потом',
+        type: 'message',
+      },
+      eventId: '70',
+    });
+    assert.equal(mapped.userReply, null);
+    assert.ok(mapped.inbound);
+    assert.deepEqual(
+      tryDecodeInbound(
+        encodeInbound(mapped.inbound.eventId, mapped.inbound.event),
+      ),
+      mapped.inbound,
+    );
+  });
+
+  void it('/interject@bot текст → delivery interject', () => {
+    const update: TelegramUpdate = {
+      message: {
+        chat: { id: 100, type: 'private' },
+        from: { id: 42 },
+        text: '/interject@SherpaBot вклинь',
+      },
+      update_id: 71,
+    };
+    const mapped = mapTelegramUpdate(update, access);
+    assert.deepEqual(mapped.inbound?.event, {
+      delivery: 'interject',
+      place: 'tg1:d:100',
+      text: 'вклинь',
+      type: 'message',
+    });
+  });
+
+  void it('/stop → session_break без текста', () => {
+    const update: TelegramUpdate = {
+      message: {
+        chat: { id: 100, type: 'private' },
+        from: { id: 42 },
+        text: '/stop',
+      },
+      update_id: 72,
+    };
+    const mapped = mapTelegramUpdate(update, access);
+    assert.deepEqual(mapped.inbound, {
+      event: { place: 'tg1:d:100', type: 'session_break' },
+      eventId: '72',
+    });
+    assert.ok(mapped.inbound);
+    assert.deepEqual(
+      tryDecodeInbound(
+        encodeInbound(mapped.inbound.eventId, mapped.inbound.event),
+      ),
+      mapped.inbound,
+    );
+  });
+
+  void it('голый /after → userReply, без inbound', () => {
+    const update: TelegramUpdate = {
+      message: {
+        chat: { id: 100, type: 'private' },
+        from: { id: 42 },
+        text: '/after',
+      },
+      update_id: 73,
+    };
+    const mapped = mapTelegramUpdate(update, access);
+    assert.equal(mapped.inbound, null);
+    assert.equal(
+      mapped.userReply,
+      'Нужен текст после команды: /interject … или /after …',
+    );
   });
 
   void it('текст в топике форума → opaque Place topic', () => {
@@ -94,6 +182,7 @@ void describe('mapTelegramUpdate', () => {
     assert.deepEqual(mapTelegramUpdate(update, access), {
       answerCallbackQueryId: null,
       inbound: null,
+      userReply: null,
     });
   });
 

@@ -5,6 +5,7 @@ export { assertNever } from './assert';
 export {
   encodeInbound,
   INBOUND_EVENT_TYPES,
+  MESSAGE_DELIVERY_VALUES,
   tryDecodeInbound,
 } from './inbound';
 
@@ -27,6 +28,8 @@ export type {
   InboundEventType,
   InboundMessage,
   InboundQuestionAnswer,
+  InboundSessionBreak,
+  MessageDelivery,
   OutboundCommand,
   OutboundCommandEnvelope,
   OutboundCommandType,
