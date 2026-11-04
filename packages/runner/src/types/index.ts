@@ -44,3 +44,15 @@ export type {
   InboundRouterDeps,
   MessageJob,
 } from './routing';
+export type {
+  OpenSession,
+  OpenSessionDouble,
+  PlaceSessionSlots,
+  PlaceSessionSlotsDeps,
+  SessionDoubleCall,
+  SessionEvent,
+  SessionPort,
+  SessionResumeInput,
+  SessionStartInput,
+  SessionTestDouble,
+} from './session';

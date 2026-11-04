@@ -30,6 +30,15 @@ const GRANT_LEVELS = [
   'rw',
 ] as const satisfies readonly GrantLevel[];
 
+export class PlaceNotFoundError extends Error {
+  readonly code = 'place_not_found' as const;
+
+  constructor(key: string) {
+    super(`places: ключ не найден: ${key}`);
+    this.name = 'PlaceNotFoundError';
+  }
+}
+
 export class WorkdirNotFoundError extends Error {
   readonly code = 'workdir_not_found' as const;
 
@@ -60,6 +69,12 @@ export function openRegistry(config: RegistryConfig): Registry {
     `INSERT INTO places (key, cwd, session_id) VALUES (?, ?, ?)`,
   );
   const findCwdStmt = db.prepare(`SELECT cwd FROM places WHERE key = ?`);
+  const findSessionIdStmt = db.prepare(
+    `SELECT session_id FROM places WHERE key = ?`,
+  );
+  const updateSessionIdStmt = db.prepare(
+    `UPDATE places SET session_id = ? WHERE key = ?`,
+  );
   const findWorkdirStmt = db.prepare(`SELECT cwd FROM workdirs WHERE cwd = ?`);
   const upsertGrantStmt = db.prepare(
     `INSERT INTO "grant" (cwd, path, level) VALUES (?, ?, ?)
@@ -104,6 +119,18 @@ export function openRegistry(config: RegistryConfig): Registry {
   function findCwdByPlaceKey(key: string): null | string {
     const row = findCwdStmt.get(key) as undefined | { cwd: string };
     return row?.cwd ?? null;
+  }
+
+  function getPlaceSessionId(key: string): string {
+    const row = findSessionIdStmt.get(key) as
+      undefined | { session_id: string };
+    if (row === undefined) throw new PlaceNotFoundError(key);
+    return row.session_id;
+  }
+
+  function setPlaceSessionId(key: string, sessionId: string) {
+    const result = updateSessionIdStmt.run(sessionId, key);
+    if (result.changes === 0) throw new PlaceNotFoundError(key);
   }
 
   function upsertGrant(input: GrantInput): GrantRecord {
@@ -190,12 +217,14 @@ export function openRegistry(config: RegistryConfig): Registry {
       db.close();
     },
     findCwdByPlaceKey,
+    getPlaceSessionId,
     insertDeny,
     insertDenyGlobal,
     insertPlace,
     insertWorkdir,
     loadWorkdirRights,
     seedWorkdirPlace,
+    setPlaceSessionId,
     upsertGrant,
   };
 }

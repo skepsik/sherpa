@@ -6,8 +6,8 @@ type PlaceSlot = {
 };
 
 /**
- * Очередь inbound-`message` на Place: не больше одного активного
- * serial-drain на ключ (модель stub / эпик 3).
+ * Очередь inbound-`message` на Place: serial push в порт (drain job =
+ * ensure handle + push; ход харнесса не ждём).
  */
 export function createPlaceMessageQueues(options: {
   drainJob: (job: MessageJob) => Promise<void>;

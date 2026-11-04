@@ -47,6 +47,11 @@ export type Registry = {
   close(): void;
   /** Нет ключа — `null`. */
   findCwdByPlaceKey(key: string): null | string;
+  /**
+   * `places.session_id` по ключу. Нет места — `PlaceNotFoundError`.
+   * Пустая строка — сессии ещё нет.
+   */
+  getPlaceSessionId(key: string): string;
   insertDeny(input: DenyInput): DenyRecord;
   insertDenyGlobal(input: DenyGlobalInput): DenyGlobalRecord;
   insertPlace(input: PlaceInput): PlaceRecord;
@@ -57,6 +62,10 @@ export type Registry = {
    */
   loadWorkdirRights(cwd: string): WorkdirRights;
   seedWorkdirPlace(input: SeedWorkdirPlaceInput): SeedWorkdirPlaceResult;
+  /**
+   * Запись / сброс (`''`) `places.session_id`. Нет места — `PlaceNotFoundError`.
+   */
+  setPlaceSessionId(key: string, sessionId: string): void;
   /** Upsert по `(cwd, path)`, включая `level: none`. */
   upsertGrant(input: GrantInput): GrantRecord;
 };

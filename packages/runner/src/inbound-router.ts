@@ -5,11 +5,13 @@ import type {
   InboundRouterDeps,
   MessageJob,
 } from './types/routing';
+import type { PlaceSessionSlots, SessionEvent } from './types/session';
 
 import { createEventIdDedup } from './event-dedup';
 import { createPlaceMessageQueues } from './message-queue';
+import { createPlaceSessionSlots } from './session';
 
-/** Фиксированный stub-ответ на `message` / ack на `question_answer`. */
+/** Stub-ack на `question_answer` до permission UI (5-3). */
 export const STUB_ACCEPTED_TEXT = 'Принято.';
 
 /** Текст «вне реестра» — одна формулировка; opaque id обязателен. */
@@ -19,13 +21,42 @@ export function buildOutsideRegistryText(placeKey: string) {
 
 /**
  * Маршрутизация inbound: дедуп → lookup → «вне реестра» / очередь /
- * stub `question_answer`. Drain сообщений — stub без Agent SDK.
+ * stub `question_answer`. Drain `message` → порт сессии (push).
  */
 export function createInboundRouter(deps: InboundRouterDeps): InboundRouter {
-  const { findCwdByPlaceKey, send } = deps;
+  const {
+    findCwdByPlaceKey,
+    getPlaceSessionId,
+    send,
+    sessionPort,
+    setPlaceSessionId,
+  } = deps;
   const dedup = createEventIdDedup();
+  /** Исходящие от стрима — по очереди на Place (busy → текст → idle). */
+  const streamOutboundTails = new Map<string, Promise<void>>();
+
+  const placeSessions = createPlaceSessionSlots({
+    getPlaceSessionId,
+    onEvent: (key, event) => {
+      const previous = streamOutboundTails.get(key) ?? Promise.resolve();
+      const run = previous.then(
+        () => handleSessionEvent(key, event, send),
+        () => handleSessionEvent(key, event, send),
+      );
+      streamOutboundTails.set(
+        key,
+        run.then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+    },
+    sessionPort,
+    setPlaceSessionId,
+  });
+
   const queues = createPlaceMessageQueues({
-    drainJob: (job) => drainMessageJob(job, send),
+    drainJob: (job) => drainMessageJob(job, placeSessions),
   });
 
   return {
@@ -67,23 +98,61 @@ export function createInboundRouter(deps: InboundRouterDeps): InboundRouter {
 
 async function drainMessageJob(
   job: MessageJob,
+  placeSessions: PlaceSessionSlots,
+) {
+  await placeSessions.pushMessage({
+    cwd: job.cwd,
+    key: job.key,
+    text: job.event.text,
+  });
+}
+
+async function handleSessionEvent(
+  key: string,
+  event: SessionEvent,
   send: InboundRouterDeps['send'],
 ) {
-  await sendBestEffort(send, {
-    place: job.key,
-    status: 'busy',
-    type: 'set_status',
-  });
-  await sendBestEffort(send, {
-    place: job.key,
-    text: STUB_ACCEPTED_TEXT,
-    type: 'send_message',
-  });
-  await sendBestEffort(send, {
-    place: job.key,
-    status: 'idle',
-    type: 'set_status',
-  });
+  switch (event.type) {
+    case 'assistant_text':
+      await sendBestEffort(send, {
+        place: key,
+        text: event.text,
+        type: 'send_message',
+      });
+      return;
+    case 'closed':
+      await sendBestEffort(send, {
+        place: key,
+        status: 'idle',
+        type: 'set_status',
+      });
+      return;
+    case 'error':
+      console.warn('session: error', key, event.message);
+      return;
+    case 'permission_ask':
+      console.warn(
+        'session: permission_ask (UI — 5-3)',
+        key,
+        event.action,
+        event.resource,
+      );
+      return;
+    case 'turn_ended':
+      await sendBestEffort(send, {
+        place: key,
+        status: 'idle',
+        type: 'set_status',
+      });
+      return;
+    case 'turn_started':
+      await sendBestEffort(send, {
+        place: key,
+        status: 'busy',
+        type: 'set_status',
+      });
+      return;
+  }
 }
 
 async function sendBestEffort(
