@@ -10,10 +10,10 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 
 ## Сессия и стрим
 
-Порт 5-1: `start` / `resume` / `pushMessage` / `subscribe` / `abort`.
+Порт 5-1: `start` / `resume` / `pushMessage` / `interruptTurn` / `subscribe` / `abort`.
 
 - Resume по `places.session_id`; любая ошибка get → `SessionResumeError` (слот сбросит id и cold start).
-- Busy push — OpenCode **steer** (`delivery: 'steer'`); queue/break — issue-5-4.
+- `pushMessage` delivery: `interject` → OpenCode **steer**, `after` → **queue**; `interruptTurn` → host interrupt (ход, не closed).
 - Ассистентский текст: `session.text.ended` → собранный текст → `assistant_text` кусками ≤4096 (мульти-`send_message` у роутера).
 - Нормальный конец хода (`execution.succeeded`) сессию не закрывает; `session_id` сохраняется.
 - Закрытие handle: `abort` / обрыв потока событий / ошибка pump.
@@ -26,4 +26,4 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 
 ## Вне скоупа здесь
 
-mid-run after/break (5-4), conformance (5-5), in-process tools раннера (эпик 8), MCP-сервер как путь.
+conformance (5-5), in-process tools раннера (эпик 8), MCP-сервер как путь.

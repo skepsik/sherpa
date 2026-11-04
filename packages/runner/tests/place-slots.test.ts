@@ -28,7 +28,13 @@ void describe('place session slots', () => {
     });
 
     await assert.rejects(
-      () => slots.pushMessage({ cwd: '/tmp/a', key: 'place-a', text: 'hi' }),
+      () =>
+        slots.pushMessage({
+          cwd: '/tmp/a',
+          delivery: 'interject',
+          key: 'place-a',
+          text: 'hi',
+        }),
       /resume crashed/,
     );
 
@@ -53,7 +59,12 @@ void describe('place session slots', () => {
       },
     });
 
-    await slots.pushMessage({ cwd: '/tmp/a', key: 'place-a', text: 'one' });
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'one',
+    });
     assert.equal(slots.getGeneration('place-a'), 0);
 
     controllable.emit(0, { type: 'turn_started' });
@@ -83,14 +94,24 @@ void describe('place session slots', () => {
       },
     });
 
-    await slots.pushMessage({ cwd: '/tmp/a', key: 'place-a', text: 'one' });
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'one',
+    });
     controllable.emit(0, { type: 'turn_started' });
     slots.dropHandle('place-a');
 
     assert.equal(slots.getGeneration('place-a'), 1);
     assert.deepEqual(forwarded, ['turn_started', 'closed']);
 
-    await slots.pushMessage({ cwd: '/tmp/a', key: 'place-a', text: 'two' });
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'two',
+    });
     controllable.emit(1, { type: 'turn_started' });
     // поздний closed старого handle (индекс 0) — не поверх нового хода
     controllable.emit(0, { type: 'closed' });
@@ -108,6 +129,9 @@ void describe('place session slots', () => {
         closedLater?.();
       },
       async answerPermission() {
+        return;
+      },
+      async interruptTurn() {
         return;
       },
       async pushMessage() {
@@ -136,7 +160,12 @@ void describe('place session slots', () => {
       setPlaceSessionId: () => undefined,
     });
 
-    await slots.pushMessage({ cwd: '/tmp/a', key: 'place-a', text: 'one' });
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'one',
+    });
     slots.dropHandle('place-a');
 
     assert.equal(slots.getGeneration('place-a'), 1);
@@ -175,6 +204,9 @@ function createControllablePort() {
         emit({ type: 'closed' });
       },
       async answerPermission() {
+        return;
+      },
+      async interruptTurn() {
         return;
       },
       async pushMessage() {

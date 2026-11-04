@@ -1,3 +1,5 @@
+import type { MessageDelivery } from '@sherpa/contract';
+
 import type {
   OpenCodeHost,
   OpenCodeHostEvent,
@@ -201,12 +203,25 @@ export function createOpenCodeSessionPort(
         live.pendingAsks.delete(input.requestId);
         resolve(input.decision);
       },
-      async pushMessage(text) {
+      async interruptTurn() {
+        if (live.closed) return;
+        const host = await ensureHost();
+        try {
+          await host.interrupt(sessionId);
+        } catch (error: unknown) {
+          console.warn('opencode: interruptTurn failed', sessionId, error);
+        }
+      },
+      async pushMessage(text: string, delivery: MessageDelivery) {
         if (live.closed) {
           throw new Error(`pushMessage: сессия закрыта (${sessionId})`);
         }
         const host = await ensureHost();
-        await host.prompt({ delivery: 'steer', sessionId, text });
+        await host.prompt({
+          delivery: mapDeliveryToOpenCode(delivery),
+          sessionId,
+          text,
+        });
       },
       get sessionId() {
         return sessionId;
@@ -252,6 +267,10 @@ function formatHostError(error: unknown) {
     if (typeof message === 'string' && message !== '') return message;
   }
   return 'ошибка хода OpenCode';
+}
+
+function mapDeliveryToOpenCode(delivery: MessageDelivery) {
+  return delivery === 'after' ? 'queue' : 'steer';
 }
 
 function rejectPendingAsks(live: OpenCodeLiveSession) {

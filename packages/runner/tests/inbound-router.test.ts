@@ -50,7 +50,12 @@ void describe('inbound router', () => {
       port.calls.filter((c) => c.type === 'start' || c.type === 'push'),
       [
         { cwd: '/tmp/a', type: 'start' },
-        { sessionId: 'double-1', text: 'привет', type: 'push' },
+        {
+          delivery: 'interject',
+          sessionId: 'double-1',
+          text: 'привет',
+          type: 'push',
+        },
       ],
     );
     assert.equal(sessionIds.get('place-a'), 'double-1');
@@ -183,6 +188,7 @@ void describe('inbound router', () => {
       port.calls.some(
         (c) =>
           c.type === 'push' &&
+          c.delivery === 'interject' &&
           c.text === 'after-kill' &&
           c.sessionId === 'double-1',
       ),
@@ -701,6 +707,147 @@ void describe('inbound router', () => {
     );
   });
 
+  void it('message без delivery → дефолт interject на push', async () => {
+    const port = createSessionTestDouble();
+    const { router } = makeHarness({
+      places: { 'place-a': '/tmp/a' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'plain', type: 'message' },
+      eventId: 'def-1',
+    });
+    await settle();
+
+    assert.ok(
+      port.calls.some(
+        (c) =>
+          c.type === 'push' && c.delivery === 'interject' && c.text === 'plain',
+      ),
+    );
+  });
+
+  void it('override after → push с delivery after', async () => {
+    const port = createSessionTestDouble();
+    const { router } = makeHarness({
+      places: { 'place-a': '/tmp/a' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: {
+        delivery: 'after',
+        place: 'place-a',
+        text: 'потом',
+        type: 'message',
+      },
+      eventId: 'after-1',
+    });
+    await settle();
+
+    assert.ok(
+      port.calls.some(
+        (c) =>
+          c.type === 'push' && c.delivery === 'after' && c.text === 'потом',
+      ),
+    );
+  });
+
+  void it('env-дефолт after без override на wire', async () => {
+    const port = createSessionTestDouble();
+    const { router } = makeHarness({
+      midRunDefaultDelivery: 'after',
+      places: { 'place-a': '/tmp/a' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'plain', type: 'message' },
+      eventId: 'def-after-1',
+    });
+    await settle();
+
+    assert.ok(
+      port.calls.some(
+        (c) =>
+          c.type === 'push' && c.delivery === 'after' && c.text === 'plain',
+      ),
+    );
+  });
+
+  void it('session_break при активном ходе → interrupt_turn', async () => {
+    const port = createSessionTestDouble({ holdTurn: true });
+    const { router } = makeHarness({
+      places: { 'place-a': '/tmp/a' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'run', type: 'message' },
+      eventId: 'brk-1',
+    });
+    await settle();
+
+    assert.equal(port.opened[0]?.isTurnActive(), true);
+
+    await router.handleInbound({
+      event: { place: 'place-a', type: 'session_break' },
+      eventId: 'brk-2',
+    });
+    await settle();
+
+    assert.ok(
+      port.calls.some((c) => c.type === 'interrupt_turn'),
+      'break → interrupt',
+    );
+    assert.equal(port.opened[0]?.isTurnActive(), false);
+  });
+
+  void it('session_break без живой сессии → no-op, порта нет', async () => {
+    const port = createSessionTestDouble();
+    const { router } = makeHarness({
+      places: { 'place-a': '/tmp/a' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', type: 'session_break' },
+      eventId: 'brk-idle-1',
+    });
+    await settle();
+
+    assert.equal(port.calls.length, 0);
+  });
+
+  void it('session_break без активного хода → no-op interrupt', async () => {
+    const port = createSessionTestDouble();
+    const { router } = makeHarness({
+      places: { 'place-a': '/tmp/a' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'done', type: 'message' },
+      eventId: 'brk-idle-2',
+    });
+    await settle();
+    assert.equal(port.opened[0]?.isTurnActive(), false);
+
+    const callsBefore = port.calls.length;
+    await router.handleInbound({
+      event: { place: 'place-a', type: 'session_break' },
+      eventId: 'brk-idle-3',
+    });
+    await settle();
+
+    assert.equal(
+      port.calls.filter((c) => c.type === 'interrupt_turn').length,
+      0,
+    );
+    assert.equal(port.calls.length, callsBefore);
+  });
+
   void it('два места — независимые слоты', async () => {
     const port = createSessionTestDouble();
     const gateA = createGate();
@@ -759,6 +906,7 @@ function delay(ms: number) {
 function makeHarness(options: {
   beforeSend?: (command: OutboundCommand) => Promise<void>;
   loadWorkdirRights?: (cwd: string) => WorkdirRights;
+  midRunDefaultDelivery?: 'after' | 'interject';
   places: Record<string, string>;
   registryPath?: string;
   sendOutcome?: (command: OutboundCommand) => ChannelSendOutcome;
@@ -787,6 +935,7 @@ function makeHarness(options: {
         denyGlobals: [],
         grants: [],
       })),
+    midRunDefaultDelivery: options.midRunDefaultDelivery ?? 'interject',
     registryPath: options.registryPath ?? ':memory:',
     send: async (command) => {
       await options.beforeSend?.(command);

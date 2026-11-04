@@ -1,6 +1,7 @@
 import type {
   InboundDecoded,
   InboundMessage,
+  MessageDelivery,
   OutboundCommand,
 } from '@sherpa/contract';
 
@@ -22,6 +23,8 @@ export type InboundRouterDeps = {
   findCwdByPlaceKey: (key: string) => null | string;
   getPlaceSessionId: (key: string) => string;
   loadWorkdirRights: (cwd: string) => WorkdirRights;
+  /** Дефолт mid-run, если у `message` нет `delivery`. */
+  midRunDefaultDelivery: MessageDelivery;
   registryPath: string;
   send: InboundOutboundSend;
   sessionPort: SessionPort;

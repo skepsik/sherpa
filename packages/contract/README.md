@@ -19,10 +19,13 @@
 
 `place` — opaque строка. Парные `type`:
 
-| Inbound           | Смысл                                           |
-| ----------------- | ----------------------------------------------- |
-| `message`         | текст пользователя в `Place`                    |
-| `question_answer` | ответ на вопрос: `requestId` / `data` / `Place` |
+| Inbound           | Смысл                                                         |
+| ----------------- | ------------------------------------------------------------- |
+| `message`         | текст пользователя в `Place`; опционально `delivery`          |
+| `question_answer` | ответ на вопрос: `requestId` / `data` / `Place`               |
+| `session_break`   | явный break текущего хода: только `place` (без текста задачи) |
+
+`message.delivery` (опционально): `interject` \| `after`. Нет поля — дефолт mid-run на стороне раннера (не на проводе). Невалидное значение → кадр не принимается.
 
 ## Outbound (раннер → транспорт)
 
@@ -47,4 +50,4 @@
 
 Коды `error`: `place_unavailable` | `place_create_failed` | `send_failed` | `transport_rejected`.
 
-Envelope: `v` / `direction` / `id` + `command` или `result` (inbound: ещё `eventId`). `WIRE_VERSION` = **1**.
+Envelope: `v` / `direction` / `id` + `command` или `result` (inbound: ещё `eventId`). `WIRE_VERSION` = **1** (отсутствие `delivery` = дефолт раннера — без bump).

@@ -36,6 +36,7 @@ const router = createInboundRouter({
   findCwdByPlaceKey: (key) => registry.findCwdByPlaceKey(key),
   getPlaceSessionId: (key) => registry.getPlaceSessionId(key),
   loadWorkdirRights: (cwd) => registry.loadWorkdirRights(cwd),
+  midRunDefaultDelivery: config.midRunDefaultDelivery,
   registryPath: config.registry.path,
   send: (command) => channel.send(command),
   sessionPort,
