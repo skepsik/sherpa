@@ -10,7 +10,10 @@ import {
   isInsideWhollyClosedDirectory,
   parseDenyLine,
 } from '../../rights/deny-match';
-import { isGrantLevelAboveNone } from '../../rights/path-utils';
+import {
+  isGrantLevelAboveNone,
+  isPathEqualOrUnder,
+} from '../../rights/path-utils';
 
 export class OpenCodeExpressError extends Error {
   readonly code = 'opencode_express_invalid' as const;
@@ -32,6 +35,8 @@ export function expressLaunchRights(
 
   const permissions: OpenCodePermissionRule[] = [];
   const roots = listLaunchRoots(rights);
+  const parsed = rights.denyPatterns.map(parseDenyLine);
+  const needCwdEditCarveOut = hasAncestorEditClosedForeignRoot(rights);
 
   // Дефолт OpenCode: external без правила — без prompt. Закрываем дыру.
   permissions.push({
@@ -50,29 +55,36 @@ export function expressLaunchRights(
     });
   }
 
-  const parsed = rights.denyPatterns.map(parseDenyLine);
-  appendDenyRules(permissions, parsed, 'write', roots);
-  appendDenyRules(permissions, parsed, 'read', roots);
-
-  for (const path of rights.registryDenyPaths) {
-    permissions.push({ action: 'read', effect: 'deny', resource: path });
-    permissions.push({ action: 'edit', effect: 'deny', resource: path });
+  // Вложенный none под чужим allow — last-match закрытие.
+  for (const path of rights.foreignClosures) {
+    appendPathClosure(permissions, path);
   }
 
+  appendDenyRules(permissions, parsed, 'write', roots);
+  appendDenyRules(permissions, parsed, 'read', roots);
+  appendRegistryDenies(permissions, rights.registryDenyPaths);
+
   // Уровни ro/append — после deny/`!`, чтобы carve-out не открыл запись в ro.
-  for (const root of rights.foreignRoots) {
-    if (isEditClosedByLevel(root.level)) {
-      permissions.push({
-        action: 'edit',
-        effect: 'deny',
-        resource: `${root.path}/*`,
-      });
-      permissions.push({
-        action: 'edit',
-        effect: 'deny',
-        resource: root.path,
-      });
-    }
+  appendForeignEditDenies(permissions, rights);
+
+  if (needCwdEditCarveOut) {
+    // Предок cwd с ro/append не должен закрывать запись в своём узле.
+    permissions.push({
+      action: 'edit',
+      effect: 'allow',
+      resource: `${rights.cwd}/*`,
+    });
+    permissions.push({
+      action: 'edit',
+      effect: 'allow',
+      resource: rights.cwd,
+    });
+    // Deny-шаблоны и реестр снова поверх carve-out (иначе .env под cwd откроется).
+    appendDenyRules(permissions, parsed, 'write', roots);
+    appendDenyRules(permissions, parsed, 'read', roots);
+    appendRegistryDenies(permissions, rights.registryDenyPaths);
+    // Обычные чужие ro — снова после `!`; предок cwd не трогаем (иначе снова закроет cwd).
+    appendForeignEditDenies(permissions, rights, { skipAncestorsOfCwd: true });
   }
 
   return { permissions };
@@ -129,6 +141,59 @@ function appendDenyRules(
   }
 }
 
+function appendForeignEditDenies(
+  permissions: OpenCodePermissionRule[],
+  rights: LaunchRights,
+  options: { skipAncestorsOfCwd?: boolean } = {},
+) {
+  for (const root of rights.foreignRoots) {
+    if (!isEditClosedByLevel(root.level)) {
+      continue;
+    }
+    if (
+      options.skipAncestorsOfCwd &&
+      isProperAncestorOf(root.path, rights.cwd)
+    ) {
+      continue;
+    }
+    permissions.push({
+      action: 'edit',
+      effect: 'deny',
+      resource: `${root.path}/*`,
+    });
+    permissions.push({
+      action: 'edit',
+      effect: 'deny',
+      resource: root.path,
+    });
+  }
+}
+
+function appendPathClosure(
+  permissions: OpenCodePermissionRule[],
+  path: string,
+) {
+  for (const resource of [`${path}/*`, path]) {
+    permissions.push({
+      action: 'external_directory',
+      effect: 'deny',
+      resource,
+    });
+    permissions.push({ action: 'read', effect: 'deny', resource });
+    permissions.push({ action: 'edit', effect: 'deny', resource });
+  }
+}
+
+function appendRegistryDenies(
+  permissions: OpenCodePermissionRule[],
+  registryDenyPaths: readonly string[],
+) {
+  for (const path of registryDenyPaths) {
+    permissions.push({ action: 'read', effect: 'deny', resource: path });
+    permissions.push({ action: 'edit', effect: 'deny', resource: path });
+  }
+}
+
 function concretizeGlobSegments(pattern: string) {
   return pattern.replace(/\*\*/g, 'x').replace(/\*/g, 'x').replace(/\?/g, 'x');
 }
@@ -143,6 +208,14 @@ function expandPathResources(pattern: string): string[] {
     out.add(pattern.slice(0, -2));
   }
   return [...out];
+}
+
+function hasAncestorEditClosedForeignRoot(rights: LaunchRights) {
+  return rights.foreignRoots.some(
+    (root) =>
+      isEditClosedByLevel(root.level) &&
+      isProperAncestorOf(root.path, rights.cwd),
+  );
 }
 
 function isEditClosedByLevel(level: GrantLevel) {
@@ -170,6 +243,10 @@ function isExceptionNoOp(
     }
   }
   return matched;
+}
+
+function isProperAncestorOf(ancestor: string, path: string) {
+  return path !== ancestor && isPathEqualOrUnder(path, ancestor);
 }
 
 /**
@@ -314,6 +391,21 @@ function validateLaunchRights(rights: LaunchRights) {
     if (!root.path || root.path.endsWith('/')) {
       throw new OpenCodeExpressError(
         `foreignRoot.path «${root.path}» — пуст или с хвостовым /`,
+      );
+    }
+  }
+  for (const path of rights.foreignClosures) {
+    if (!path || path.endsWith('/')) {
+      throw new OpenCodeExpressError(
+        `foreignClosure «${path}» — пуст или с хвостовым /`,
+      );
+    }
+    const underForeign = rights.foreignRoots.some(
+      (root) => path !== root.path && isPathEqualOrUnder(path, root.path),
+    );
+    if (!underForeign) {
+      throw new OpenCodeExpressError(
+        `foreignClosure «${path}» — нет чужого корня выше`,
       );
     }
   }

@@ -38,14 +38,22 @@ export function buildLaunchRights(
   options: ResolveRightsOptions,
 ): LaunchRights {
   validateGrantNotInsideDeniedTree(snapshot);
+  validateGrantNotInsideNonePath(snapshot);
 
   const foreignRoots = snapshot.grants
     .filter((grant) => isGrantLevelAboveNone(grant.level))
     .map((grant) => ({ level: grant.level, path: grant.path }));
 
+  const foreignClosures = listForeignClosures(
+    snapshot.cwd,
+    foreignRoots,
+    snapshot,
+  );
+
   return {
     cwd: snapshot.cwd,
     denyPatterns: listMergedDenyPatterns(snapshot),
+    foreignClosures,
     foreignRoots,
     ownRoot: { level: 'rw', path: snapshot.cwd },
     registryDenyPaths: listRegistryDenyPaths(options.registryPath),
@@ -92,6 +100,35 @@ export function resolvePathAccess(
     level = minGrantLevel(level, 'ro');
   }
   return { level };
+}
+
+/**
+ * Вложенный none под чужим корнем выше none.
+ * Grant на путь под своим cwd и одиночный none — не в снимок.
+ */
+function listForeignClosures(
+  cwd: string,
+  foreignRoots: readonly { path: string }[],
+  snapshot: WorkdirRights,
+): string[] {
+  const out: string[] = [];
+  for (const grant of snapshot.grants) {
+    if (grant.level !== 'none') {
+      continue;
+    }
+    if (isPathEqualOrUnder(grant.path, cwd)) {
+      continue;
+    }
+    const underForeign = foreignRoots.some(
+      (root) =>
+        grant.path !== root.path && isPathEqualOrUnder(grant.path, root.path),
+    );
+    if (!underForeign) {
+      continue;
+    }
+    out.push(grant.path);
+  }
+  return out;
 }
 
 function resolveGrantLevelBoth(
@@ -144,6 +181,26 @@ function validateGrantNotInsideDeniedTree(snapshot: WorkdirRights) {
       throw new RightsConfigError(
         `grant «${grant.path}» внутри каталога, закрытого обычным deny`,
       );
+    }
+  }
+}
+
+/** Grant выше none внутри пути с grant none — конфигурация невыразима. */
+function validateGrantNotInsideNonePath(snapshot: WorkdirRights) {
+  const nonePaths = snapshot.grants
+    .filter((grant) => grant.level === 'none')
+    .map((grant) => grant.path);
+
+  for (const grant of snapshot.grants) {
+    if (!isGrantLevelAboveNone(grant.level)) {
+      continue;
+    }
+    for (const nonePath of nonePaths) {
+      if (grant.path !== nonePath && isPathEqualOrUnder(grant.path, nonePath)) {
+        throw new RightsConfigError(
+          `grant «${grant.path}» внутри пути, закрытого grant none «${nonePath}»`,
+        );
+      }
     }
   }
 }

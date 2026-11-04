@@ -17,6 +17,11 @@ export type LaunchRights = {
   cwd: string;
   /** Объединённые шаблоны deny + deny_global (как в БД). */
   denyPatterns: string[];
+  /**
+   * Вложенный `none` под чужим корнем выше none.
+   * Одиночный none / none вне чужого корня — сюда не входит.
+   */
+  foreignClosures: string[];
   /** Чужие корни с level выше none. */
   foreignRoots: LaunchRoot[];
   /** Свой узел — полный доступ (кроме deny / константного запрета). */

@@ -26,7 +26,7 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Права cwd: `loadWorkdirRights(cwd)` — одной транзакцией все `grant` / `deny` этого cwd и все `deny_global`. Нет workdir — ошибка `workdir_not_found`. Кэша между вызовами нет.
 
-Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
+Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar; `foreignClosures` для вложенного `none` под чужим корнем). Реальный путь — walk как open(2) (follow symlink по сегментам, `..` после follow). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
 
 OpenCode: `expressLaunchRights(launchRights)` — снимок → `permissions` для запуска (без живой сессии). Эпик 5 подключает конфиг к старту; ask UI и `append_file` — не здесь. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
 

@@ -14,18 +14,21 @@ import WebSocket, { WebSocketServer } from 'ws';
 
 import type { ChannelConfig, ChannelServer, LiveSocket } from './types';
 
+import { createPlaceQueues } from './place-queue';
+
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const CLOSE_INVALID_WIRE = 1003;
 
 /**
  * WebSocket-слушатель: auth на upgrade (только header), одно активное соединение,
- * inbound → клиент (at-most-once), outbound → `execute` → result.
+ * inbound → клиент (at-most-once), outbound → `execute` по Place → result.
  */
 export function createChannelServer(options: {
   config: ChannelConfig;
   execute: (command: OutboundCommand) => Promise<OutboundResult>;
 }): ChannelServer {
   const { config, execute } = options;
+  const placeQueues = createPlaceQueues();
   let httpServer: HttpServer | null = null;
   let wss: null | WebSocketServer = null;
   let active: LiveSocket | null = null;
@@ -105,7 +108,9 @@ export function createChannelServer(options: {
     }
 
     try {
-      const result = await execute(decoded.command);
+      const result = await placeQueues.enqueue(decoded.command.place, () =>
+        execute(decoded.command),
+      );
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(encodeOutboundResult(decoded.id, result));
       }

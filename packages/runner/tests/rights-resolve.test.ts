@@ -145,6 +145,26 @@ void describe('rights resolve', () => {
     registry.close();
   });
 
+  void it('symlink + .. после follow: не rw своего cwd на outside/secret', () => {
+    const ctx = setupTree(temps);
+    const { cwd, registry, root } = ctx;
+    const outside = join(root, 'outside');
+    const child = join(outside, 'child');
+    mkdirSync(child, { recursive: true });
+    writeFileSync(join(outside, 'secret.txt'), 'secret');
+    const link = join(cwd, 'link');
+    symlinkSync(child, link);
+
+    const snap = registry.loadWorkdirRights(cwd);
+    // join() схлопывает .. лексически — путь как на wire/open
+    const viaLinkDots = `${cwd}/link/../secret.txt`;
+    assert.equal(
+      resolvePathAccess(cwd, viaLinkDots, snap, opts(ctx)).level,
+      'none',
+    );
+    registry.close();
+  });
+
   void it('cwd ≠ snapshot.cwd — отказ', () => {
     const ctx = setupTree(temps);
     const { cwd, registry } = ctx;
@@ -273,6 +293,27 @@ void describe('rights resolve', () => {
     registry.close();
   });
 
+  void it('grant > none внутри пути none — отказ', () => {
+    const ctx = setupTree(temps);
+    const { cwd, registry, roots } = ctx;
+    mkdirSync(join(roots.dev, 'closed', 'hole'), { recursive: true });
+    const closed = normalizeWorkdirPath(join(roots.dev, 'closed'));
+    const hole = normalizeWorkdirPath(join(roots.dev, 'closed', 'hole'));
+    registry.upsertGrant({ cwd, level: 'rw', path: roots.dev });
+    registry.upsertGrant({ cwd, level: 'none', path: closed });
+    registry.upsertGrant({ cwd, level: 'ro', path: hole });
+
+    const snap = registry.loadWorkdirRights(cwd);
+    assert.throws(
+      () => buildLaunchRights(snap, opts(ctx)),
+      (err: unknown) =>
+        err instanceof RightsConfigError &&
+        err.code === 'rights_config_invalid' &&
+        /grant none/.test(String(err)),
+    );
+    registry.close();
+  });
+
   void it('grant внутри закрытого запретом префикса — отказ; ! no-op — не отказ', () => {
     const ctx = setupTree(temps);
     const { cwd, registry, roots } = ctx;
@@ -362,10 +403,32 @@ void describe('rights resolve', () => {
     assert.deepEqual(launch.foreignRoots, [
       { level: 'append', path: roots.lib },
     ]);
+    assert.deepEqual(launch.foreignClosures, []);
     assert.ok(launch.denyPatterns.includes('write:.onto/**'));
     assert.ok(launch.denyPatterns.includes('read:**/.env*'));
     assert.ok(launch.registryDenyPaths.includes(dbPath));
     assert.ok(launch.registryDenyPaths.includes(`${dbPath}-wal`));
+    registry.close();
+  });
+
+  void it('вложенный none → foreignClosures; одиночный none — нет', () => {
+    const ctx = setupTree(temps);
+    const { cwd, registry, roots } = ctx;
+    mkdirSync(join(roots.dev, 'child'), { recursive: true });
+    const child = normalizeWorkdirPath(join(roots.dev, 'child'));
+    writeFileSync(join(child, 'f.txt'), 'x');
+    registry.upsertGrant({ cwd, level: 'rw', path: roots.dev });
+    registry.upsertGrant({ cwd, level: 'none', path: child });
+    registry.upsertGrant({ cwd, level: 'none', path: roots.holt });
+
+    const snap = registry.loadWorkdirRights(cwd);
+    const launch = buildLaunchRights(snap, opts(ctx));
+    assert.deepEqual(launch.foreignRoots, [{ level: 'rw', path: roots.dev }]);
+    assert.deepEqual(launch.foreignClosures, [child]);
+    assert.equal(
+      resolvePathAccess(cwd, join(child, 'f.txt'), snap, opts(ctx)).level,
+      'none',
+    );
     registry.close();
   });
 
