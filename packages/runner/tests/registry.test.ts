@@ -10,6 +10,7 @@ import {
   DenyPatternError,
   normalizeWorkdirPath,
   openRegistry,
+  PlaceNotFoundError,
   validateDenyPattern,
   WorkdirNotFoundError,
 } from '../src/registry';
@@ -83,6 +84,40 @@ void describe('registry', () => {
     assert.equal(seeded.placeKey, 'place-opaque-1');
     assert.equal(registry.findCwdByPlaceKey('place-opaque-1'), seeded.cwd);
     assert.equal(registry.findCwdByPlaceKey('missing'), null);
+    assert.equal(registry.getPlaceSessionId('place-opaque-1'), '');
+
+    registry.close();
+  });
+
+  void it('places.session_id: запись, сброс, нет ключа — PlaceNotFoundError', () => {
+    const root = makeTempDir(temps);
+    const workdirPath = join(root, 'project');
+    mkdirSync(workdirPath);
+
+    const { registry } = openTempRegistry(temps);
+    registry.seedWorkdirPlace({
+      cwd: workdirPath,
+      description: 'когда сюда',
+      name: 'demo',
+      placeKey: 'place-s',
+    });
+
+    assert.equal(registry.getPlaceSessionId('place-s'), '');
+    registry.setPlaceSessionId('place-s', 'sess-1');
+    assert.equal(registry.getPlaceSessionId('place-s'), 'sess-1');
+    registry.setPlaceSessionId('place-s', '');
+    assert.equal(registry.getPlaceSessionId('place-s'), '');
+
+    assert.throws(
+      () => registry.getPlaceSessionId('missing'),
+      (error: unknown) =>
+        error instanceof PlaceNotFoundError && error.code === 'place_not_found',
+    );
+    assert.throws(
+      () => registry.setPlaceSessionId('missing', 'x'),
+      (error: unknown) =>
+        error instanceof PlaceNotFoundError && error.code === 'place_not_found',
+    );
 
     registry.close();
   });

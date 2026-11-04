@@ -5,4 +5,8 @@ export {
 } from './deny-pattern';
 export { migrateRegistrySchema } from './migrate';
 export { normalizeWorkdirPath } from './normalize-path';
-export { openRegistry, WorkdirNotFoundError } from './registry';
+export {
+  openRegistry,
+  PlaceNotFoundError,
+  WorkdirNotFoundError,
+} from './registry';

@@ -4,3 +4,4 @@ coverage
 package-lock.json
 .claude
 *.log
+sherpa.code-workspace
