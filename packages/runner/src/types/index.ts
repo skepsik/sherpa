@@ -6,9 +6,19 @@ export type {
 } from './channel';
 export type { ChannelConfig, RunnerConfig } from './config';
 export type {
+  OpenCodeHost,
+  OpenCodeHostCreateSessionInput,
+  OpenCodeHostEvent,
+  OpenCodeHostEventData,
+  OpenCodeHostPermissionReplyInput,
+  OpenCodeHostPromptInput,
   OpenCodeLaunchPermissions,
+  OpenCodeLiveSession,
+  OpenCodePermissionAsk,
+  OpenCodePermissionDecision,
   OpenCodePermissionEffect,
   OpenCodePermissionRule,
+  OpenCodeSessionPortDeps,
 } from './opencode';
 export type { ChannelSendOutcome, ChannelUnknownCause } from './outcome';
 export type {

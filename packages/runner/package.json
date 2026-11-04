@@ -10,6 +10,7 @@
     "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
+    "@opencode/sdk": "^2.2.5",
     "@sherpa/contract": "*",
     "dotenv": "^18.0.9",
     "ignore": "^5.3.2",

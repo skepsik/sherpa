@@ -1,9 +1,29 @@
-# Адаптер OpenCode: выражение прав запуска
+# Адаптер OpenCode
 
-Чистая функция `expressLaunchRights(LaunchRights) → OpenCodeLaunchPermissions`.
+Embedded runtime (`@opencode/sdk`): in-memory router в процессе раннера, без обязательного `opencode serve`.
 
-- Вход — плоский снимок `buildLaunchRights` (issue-4-2).
-- Выход — массив `permissions` OpenCode V2 (`allow` / `deny` / `ask`, last match wins).
-- Эпик 5 подставляет этот конфиг при старте сессии; permission ask → Telegram — не здесь.
-- `append_file` / уровни append сверх закрытия стандартного `edit` — эпик 8.
-- Рекомендуемые шаблоны `deny_global` адаптер в снимок/БД не дописывает.
+## Права на старте
+
+`createOpenCodeSessionPort`: на cold `start` — `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в `createSession`. Shell deny в снимке. Shared host на процесс; права Place A не применяются к сессии Place B (отдельный `createSession`).
+
+Чистая функция `expressLaunchRights(LaunchRights)` — без живой сессии (issue-4-3).
+
+## Сессия и стрим
+
+Порт 5-1: `start` / `resume` / `pushMessage` / `subscribe` / `abort`.
+
+- Resume по `places.session_id`; любая ошибка get → `SessionResumeError` (слот сбросит id и cold start).
+- Busy push — OpenCode **steer** (`delivery: 'steer'`); queue/break — issue-5-4.
+- Ассистентский текст: `session.text.ended` → собранный текст → `assistant_text` кусками ≤4096 (мульти-`send_message` у роутера).
+- Нормальный конец хода (`execution.succeeded`) сессию не закрывает; `session_id` сохраняется.
+- Закрытие handle: `abort` / обрыв потока событий / ошибка pump.
+- Permission ask → событие порта + лог; ответ UI — issue-5-3 (до него — reject/заглушка теста).
+- Idle-timeout без хода — **вне** эпика 5 (принятый риск).
+
+## Зависимость
+
+`@opencode/sdk` — см. `package.json` runner (`2.2.5`). Живой host требует Node с `await using` (проверено на 26+; на 22 runtime SDK падает). CI-тесты порта — fake host без модели. БД сессий OpenCode — файл `opencode.sqlite` рядом с `SHERPA_REGISTRY_PATH` (не новая таблица шерпы).
+
+## Вне скоупа здесь
+
+Permission UI (5-3), mid-run after/break (5-4), conformance (5-5), in-process tools раннера (эпик 8), MCP-сервер как путь.

@@ -1,12 +1,15 @@
 import { config as loadDotenv } from 'dotenv';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  createOpenCodeHost,
+  createOpenCodeSessionPort,
+} from './adapters/opencode';
 import { createChannelClient } from './channel';
 import { loadRunnerConfig } from './config';
 import { createInboundRouter } from './inbound-router';
 import { openRegistry } from './registry';
-import { createSessionTestDouble } from './session';
 
 const repoRoot = resolve(
   fileURLToPath(new URL('.', import.meta.url)),
@@ -16,8 +19,13 @@ loadDotenv({ path: resolve(repoRoot, '.env') });
 
 const config = loadRunnerConfig();
 const registry = openRegistry(config.registry);
-/** До OpenCode (5-2) — in-memory double на порту сессии. */
-const sessionPort = createSessionTestDouble();
+/** Кэш сессий OpenCode рядом с реестром (resume после рестарта раннера). */
+const openCodeDbPath = join(dirname(config.registry.path), 'opencode.sqlite');
+const sessionPort = createOpenCodeSessionPort({
+  createHost: () => createOpenCodeHost({ databasePath: openCodeDbPath }),
+  loadWorkdirRights: (cwd) => registry.loadWorkdirRights(cwd),
+  registryPath: config.registry.path,
+});
 
 const channel = createChannelClient({
   config: config.channel,
@@ -34,7 +42,7 @@ const router = createInboundRouter({
 });
 
 await channel.start();
-console.log('@sherpa/runner: channel connected, registry open');
+console.log('@sherpa/runner: channel connected, registry open, OpenCode port');
 
 async function shutdown() {
   await channel.stop();
