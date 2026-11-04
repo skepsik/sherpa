@@ -3,6 +3,7 @@ import type {
   OpenCodeHostEvent,
   OpenCodeLiveSession,
   OpenCodePermissionAsk,
+  OpenCodePermissionDecision,
   OpenCodeSessionPortDeps,
 } from '../../types/opencode';
 import type {
@@ -25,8 +26,7 @@ import { expressLaunchRights } from './express-launch-rights';
 export function createOpenCodeSessionPort(
   deps: OpenCodeSessionPortDeps,
 ): SessionPort {
-  const { createHost, loadWorkdirRights, registryPath, replyPermissionAsk } =
-    deps;
+  const { createHost, loadWorkdirRights, registryPath } = deps;
 
   let hostPromise: null | Promise<OpenCodeHost> = null;
   let pumpStarted = false;
@@ -65,6 +65,7 @@ export function createOpenCodeSessionPort(
       if (live.closed) continue;
       live.closed = true;
       liveById.delete(live.sessionId);
+      rejectPendingAsks(live);
       if (kind === 'error' && message !== undefined) {
         live.emit({ message, type: 'error' });
       }
@@ -85,14 +86,8 @@ export function createOpenCodeSessionPort(
         const resource = resolveAskResource(event.data?.resources);
         const requestId =
           typeof event.data?.id === 'string' ? event.data.id : '';
-        live.emit({ action, resource, type: 'permission_ask' });
-        console.warn(
-          'opencode: permission_ask (UI — 5-3)',
-          sessionId,
-          action,
-          resource,
-        );
-        void settlePermissionAsk(host, {
+        live.emit({ action, requestId, resource, type: 'permission_ask' });
+        void settlePermissionAsk(host, live, {
           action,
           requestId,
           resource,
@@ -132,13 +127,23 @@ export function createOpenCodeSessionPort(
 
   async function settlePermissionAsk(
     host: OpenCodeHost,
+    live: OpenCodeLiveSession,
     ask: OpenCodePermissionAsk,
   ) {
-    if (ask.requestId === '') return;
-    const decision =
-      replyPermissionAsk === undefined
-        ? 'reject'
-        : await replyPermissionAsk(ask);
+    if (ask.requestId === '') {
+      console.warn('opencode: permission_ask без requestId', ask.sessionId);
+      try {
+        await host.replyPermission({
+          decision: 'reject',
+          requestId: ask.requestId,
+          sessionId: ask.sessionId,
+        });
+      } catch (error: unknown) {
+        console.warn('opencode: replyPermission failed', ask.sessionId, error);
+      }
+      return;
+    }
+    const decision = await waitForPermissionDecision(live, ask.requestId);
     try {
       await host.replyPermission({
         decision,
@@ -155,6 +160,7 @@ export function createOpenCodeSessionPort(
     if (prev !== undefined && !prev.closed) {
       prev.closed = true;
       liveById.delete(sessionId);
+      rejectPendingAsks(prev);
       prev.emit({ type: 'closed' });
     }
 
@@ -166,6 +172,7 @@ export function createOpenCodeSessionPort(
         for (const listener of listeners) listener(event);
       },
       listeners,
+      pendingAsks: new Map(),
       sessionId,
     };
     liveById.set(sessionId, live);
@@ -185,7 +192,14 @@ export function createOpenCodeSessionPort(
         if (liveById.get(sessionId) === live) {
           liveById.delete(sessionId);
         }
+        rejectPendingAsks(live);
         live.emit({ type: 'closed' });
+      },
+      async answerPermission(input) {
+        const resolve = live.pendingAsks.get(input.requestId);
+        if (resolve === undefined) return;
+        live.pendingAsks.delete(input.requestId);
+        resolve(input.decision);
       },
       async pushMessage(text) {
         if (live.closed) {
@@ -240,8 +254,28 @@ function formatHostError(error: unknown) {
   return 'ошибка хода OpenCode';
 }
 
+function rejectPendingAsks(live: OpenCodeLiveSession) {
+  for (const resolve of live.pendingAsks.values()) {
+    resolve('reject');
+  }
+  live.pendingAsks.clear();
+}
+
 function resolveAskResource(resources: unknown) {
   if (!Array.isArray(resources)) return '*';
   const first: unknown = resources[0];
   return typeof first === 'string' ? first : '*';
+}
+
+function waitForPermissionDecision(
+  live: OpenCodeLiveSession,
+  requestId: string,
+) {
+  return new Promise<OpenCodePermissionDecision>((resolve) => {
+    const prev = live.pendingAsks.get(requestId);
+    if (prev !== undefined) {
+      prev('reject');
+    }
+    live.pendingAsks.set(requestId, resolve);
+  });
 }

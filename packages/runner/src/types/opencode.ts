@@ -66,6 +66,8 @@ export type OpenCodeLiveSession = {
   closed: boolean;
   emit: (event: SessionEvent) => void;
   listeners: Set<(event: SessionEvent) => void>;
+  /** requestId ask → resolve решения для `replyPermission`. */
+  pendingAsks: Map<string, (decision: OpenCodePermissionDecision) => void>;
   sessionId: string;
 };
 
@@ -93,10 +95,4 @@ export type OpenCodeSessionPortDeps = {
   createHost: () => Promise<OpenCodeHost>;
   loadWorkdirRights: (cwd: string) => WorkdirRights;
   registryPath: string;
-  /**
-   * До 5-3: ответ на ask (тест/заглушка). Нет колбэка — reject + лог.
-   */
-  replyPermissionAsk?: (
-    ask: OpenCodePermissionAsk,
-  ) => Promise<OpenCodePermissionDecision>;
 };

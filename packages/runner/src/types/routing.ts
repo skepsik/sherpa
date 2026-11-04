@@ -5,7 +5,9 @@ import type {
 } from '@sherpa/contract';
 
 import type { ChannelSendOutcome } from './outcome';
-import type { SessionPort } from './session';
+import type { PendingPermissionAsk } from './permission';
+import type { WorkdirRights } from './registry';
+import type { PlaceSessionSlots, SessionPort } from './session';
 
 /** Исходящий канал с точки зрения маршрутизации inbound. */
 export type InboundOutboundSend = (
@@ -19,6 +21,8 @@ export type InboundRouter = {
 export type InboundRouterDeps = {
   findCwdByPlaceKey: (key: string) => null | string;
   getPlaceSessionId: (key: string) => string;
+  loadWorkdirRights: (cwd: string) => WorkdirRights;
+  registryPath: string;
   send: InboundOutboundSend;
   sessionPort: SessionPort;
   setPlaceSessionId: (key: string, sessionId: string) => void;
@@ -31,4 +35,15 @@ export type MessageJob = {
   eventId: string;
   /** Opaque Place ≡ ключ `places`. */
   key: string;
+};
+
+/** Контекст обработки события стрима Place (pending ask / outbound). */
+export type SessionEventCtx = {
+  allocateWireRequestId: () => string;
+  findCwdByPlaceKey: InboundRouterDeps['findCwdByPlaceKey'];
+  loadWorkdirRights: InboundRouterDeps['loadWorkdirRights'];
+  pendingAsks: Map<string, PendingPermissionAsk>;
+  placeSessions: PlaceSessionSlots;
+  registryPath: string;
+  send: InboundOutboundSend;
 };

@@ -107,6 +107,9 @@ void describe('place session slots', () => {
         for (const listener of listeners) listener({ type: 'closed' });
         closedLater?.();
       },
+      async answerPermission() {
+        return;
+      },
       async pushMessage() {
         return;
       },
@@ -170,6 +173,9 @@ function createControllablePort() {
     const session: OpenSession = {
       async abort() {
         emit({ type: 'closed' });
+      },
+      async answerPermission() {
+        return;
       },
       async pushMessage() {
         return;

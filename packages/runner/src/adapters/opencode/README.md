@@ -17,7 +17,7 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 - Ассистентский текст: `session.text.ended` → собранный текст → `assistant_text` кусками ≤4096 (мульти-`send_message` у роутера).
 - Нормальный конец хода (`execution.succeeded`) сессию не закрывает; `session_id` сохраняется.
 - Закрытие handle: `abort` / обрыв потока событий / ошибка pump.
-- Permission ask → событие порта + лог; ответ UI — issue-5-3 (до него — reject/заглушка теста).
+- Permission ask → событие порта `permission_ask`; ответ — `OpenSession.answerPermission` → host `replyPermission` (`once` / `always` / `reject`). UI кнопок — inbound-router (issue-5-3). На abort/closed незакрытые ask → `reject`.
 - Idle-timeout без хода — **вне** эпика 5 (принятый риск).
 
 ## Зависимость
@@ -26,4 +26,4 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 
 ## Вне скоупа здесь
 
-Permission UI (5-3), mid-run after/break (5-4), conformance (5-5), in-process tools раннера (эпик 8), MCP-сервер как путь.
+mid-run after/break (5-4), conformance (5-5), in-process tools раннера (эпик 8), MCP-сервер как путь.

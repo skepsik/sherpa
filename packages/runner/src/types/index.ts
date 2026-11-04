@@ -22,6 +22,12 @@ export type {
 } from './opencode';
 export type { ChannelSendOutcome, ChannelUnknownCause } from './outcome';
 export type {
+  PendingPermissionAsk,
+  PermissionAnswerMapping,
+  PermissionButtonData,
+  PermissionConfirmInput,
+} from './permission';
+export type {
   DenyGlobalInput,
   DenyGlobalRecord,
   DenyInput,
@@ -53,6 +59,7 @@ export type {
   InboundRouter,
   InboundRouterDeps,
   MessageJob,
+  SessionEventCtx,
 } from './routing';
 export type {
   OpenSession,
@@ -61,6 +68,7 @@ export type {
   PlaceSessionSlotsDeps,
   SessionDoubleCall,
   SessionEvent,
+  SessionPermissionDecision,
   SessionPort,
   SessionResumeInput,
   SessionStartInput,

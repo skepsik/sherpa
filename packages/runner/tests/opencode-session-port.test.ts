@@ -280,18 +280,13 @@ void describe('opencode session port (fake host)', () => {
     registry.close();
   });
 
-  void it('permission_ask не теряется; replyPermissionAsk вызывается', async () => {
+  void it('permission_ask ждёт answerPermission → replyPermission', async () => {
     const { cwd, registry, registryPath } = setupWorkdir(temps);
     const host = createOpenCodeFakeHost();
-    const asks: string[] = [];
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
-      replyPermissionAsk: async (ask) => {
-        asks.push(`${ask.action}:${ask.resource}`);
-        return 'reject';
-      },
     });
 
     const events: SessionEvent[] = [];
@@ -314,11 +309,81 @@ void describe('opencode session port (fake host)', () => {
     );
     assert.deepEqual(
       events.filter((event) => event.type === 'permission_ask'),
-      [{ action: 'edit', resource: '/tmp/x', type: 'permission_ask' }],
+      [
+        {
+          action: 'edit',
+          requestId: 'perm_1',
+          resource: '/tmp/x',
+          type: 'permission_ask',
+        },
+      ],
     );
+    assert.equal(host.replies.length, 0);
+
+    await session.answerPermission({
+      decision: 'once',
+      requestId: 'perm_1',
+    });
     await waitFor(() => host.replies.length >= 1, 1000);
-    assert.deepEqual(asks, ['edit:/tmp/x']);
+    assert.equal(host.replies[0]?.decision, 'once');
+    assert.equal(host.replies[0]?.requestId, 'perm_1');
+
+    registry.close();
+  });
+
+  void it('permission_ask без requestId → replyPermission(reject)', async () => {
+    const { cwd, registry, registryPath } = setupWorkdir(temps);
+    const host = createOpenCodeFakeHost();
+    const port = createOpenCodeSessionPort({
+      createHost: async () => host,
+      loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
+      registryPath,
+    });
+
+    const session = await port.start({ cwd });
+    host.emit({
+      data: {
+        action: 'edit',
+        id: '',
+        resources: ['/tmp/x'],
+        sessionID: session.sessionId,
+      },
+      type: 'permission.asked',
+    });
+
+    await waitFor(() => host.replies.length >= 1, 1000);
     assert.equal(host.replies[0]?.decision, 'reject');
+    assert.equal(host.replies[0]?.requestId, '');
+
+    registry.close();
+  });
+
+  void it('abort при открытом ask → replyPermission(reject)', async () => {
+    const { cwd, registry, registryPath } = setupWorkdir(temps);
+    const host = createOpenCodeFakeHost();
+    const port = createOpenCodeSessionPort({
+      createHost: async () => host,
+      loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
+      registryPath,
+    });
+
+    const session = await port.start({ cwd });
+    host.emit({
+      data: {
+        action: 'edit',
+        id: 'perm_abort',
+        resources: ['/tmp/x'],
+        sessionID: session.sessionId,
+      },
+      type: 'permission.asked',
+    });
+    // дать settlePermissionAsk зарегистрировать pending
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+    await session.abort();
+    await waitFor(() => host.replies.length >= 1, 1000);
+    assert.equal(host.replies[0]?.decision, 'reject');
+    assert.equal(host.replies[0]?.requestId, 'perm_abort');
 
     registry.close();
   });

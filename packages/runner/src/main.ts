@@ -35,6 +35,8 @@ const channel = createChannelClient({
 const router = createInboundRouter({
   findCwdByPlaceKey: (key) => registry.findCwdByPlaceKey(key),
   getPlaceSessionId: (key) => registry.getPlaceSessionId(key),
+  loadWorkdirRights: (cwd) => registry.loadWorkdirRights(cwd),
+  registryPath: config.registry.path,
   send: (command) => channel.send(command),
   sessionPort,
   setPlaceSessionId: (key, sessionId) =>

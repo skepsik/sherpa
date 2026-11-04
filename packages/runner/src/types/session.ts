@@ -2,12 +2,29 @@
 
 export type OpenSession = {
   abort(): Promise<void>;
+  /**
+   * Ответ на `permission_ask` с тем же `requestId`.
+   * Нет открытого ask — мягкий no-op (teardown / повтор).
+   */
+  answerPermission(input: {
+    decision: SessionPermissionDecision;
+    requestId: string;
+  }): Promise<void>;
   pushMessage(text: string): Promise<void>;
   readonly sessionId: string;
   subscribe(listener: (event: SessionEvent) => void): void;
 };
 
 export type OpenSessionDouble = OpenSession & {
+  /**
+   * Эмит `permission_ask` и Promise решения (для тестов UI-пути).
+   * Резолвится из `answerPermission` / reject при kill.
+   */
+  emitPermissionAsk(input: {
+    action: string;
+    requestId: string;
+    resource: string;
+  }): Promise<SessionPermissionDecision>;
   isAlive(): boolean;
   kill(): void;
   readonly pushes: string[];
@@ -30,16 +47,30 @@ export type PlaceSessionSlotsDeps = {
 export type SessionDoubleCall =
   | { cwd: string; sessionId: string; type: 'resume' }
   | { cwd: string; type: 'start' }
+  | {
+      decision: SessionPermissionDecision;
+      requestId: string;
+      sessionId: string;
+      type: 'answer_permission';
+    }
   | { sessionId: string; text: string; type: 'push' }
   | { sessionId: string; type: 'abort' };
 
 export type SessionEvent =
-  | { action: string; resource: string; type: 'permission_ask' }
+  | {
+      action: string;
+      requestId: string;
+      resource: string;
+      type: 'permission_ask';
+    }
   | { message: string; type: 'error' }
   | { text: string; type: 'assistant_text' }
   | { type: 'closed' }
   | { type: 'turn_ended' }
   | { type: 'turn_started' };
+
+/** Решение на permission ask: once / always / reject. */
+export type SessionPermissionDecision = 'always' | 'once' | 'reject';
 
 export type SessionPort = {
   resume(input: SessionResumeInput): Promise<OpenSession>;
