@@ -7,7 +7,8 @@
     "start": "tsx src/main.ts",
     "seed": "tsx src/seed-cli.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:conformance": "tsx --test tests/conformance.test.ts"
   },
   "dependencies": {
     "@opencode/sdk": "^2.2.5",

@@ -32,6 +32,8 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Mid-run: `interject`→steer, `after`→queue, `session_break`→interrupt. Permission ask → `send_question` / `question_answer` / `answerPermission` (см. ниже). Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
 
+Conformance suite (матрица allow/deny/ask без диалекта харнесса): [`src/conformance/README.md`](src/conformance/README.md); драйвер OpenCode fake — `createOpenCodeConformanceDriver`; `npm run test:conformance -w @sherpa/runner` (также в общем `npm test`).
+
 ## Mid-run
 
 Дефолт доставки текста без `delivery` на wire — `SHERPA_MID_RUN_DELIVERY` (или `interject`). Разовый override — поле `message.delivery` с бота (`/interject` / `/after`). `session_break` (`/stop`): при активном ходе → `interruptTurn` (сессию не закрывает); без живой сессии или без хода — no-op + log. Очередь `message` раннера — pre-harness / serial drain; поверх OpenCode queue второй очереди нет. `question_answer` — не mid-run текст.

@@ -24,6 +24,10 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 
 `@opencode/sdk` — см. `package.json` runner (`2.2.5`). Живой host требует Node с `await using` (проверено на 26+; на 22 runtime SDK падает). CI-тесты порта — fake host без модели. БД сессий OpenCode — файл `opencode.sqlite` рядом с `SHERPA_REGISTRY_PATH` (не новая таблица шерпы).
 
+## Conformance
+
+Suite + интерфейс драйвера — [`../../conformance/README.md`](../../conformance/README.md). Драйвер OpenCode: `createOpenCodeConformanceDriver()` (fake: express + last-match + ask; CI без модели).
+
 ## Вне скоупа здесь
 
-conformance (5-5), in-process tools раннера (эпик 8), MCP-сервер как путь.
+in-process tools раннера (эпик 8), MCP-сервер как путь.
