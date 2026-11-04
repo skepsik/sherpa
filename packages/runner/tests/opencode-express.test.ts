@@ -15,6 +15,7 @@ import type { OpenCodePermissionRule } from '../src/types/opencode';
 
 import {
   expressLaunchRights,
+  findPermissionEffect,
   OpenCodeExpressError,
 } from '../src/adapters/opencode';
 import { normalizeWorkdirPath, openRegistry } from '../src/registry';
@@ -589,56 +590,13 @@ function findEffect(
   action: string,
   resource: string,
 ) {
-  let effect: null | OpenCodePermissionRule['effect'] = null;
-  for (const rule of rules) {
-    if (rule.action !== action && rule.action !== '*') {
-      continue;
-    }
-    if (matchesWildcard(rule.resource, resource)) {
-      effect = rule.effect;
-    }
-  }
-  return effect;
+  return findPermissionEffect(rules, action, resource);
 }
 
 function makeTempDir(temps: string[]) {
   const dir = mkdtempSync(join(tmpdir(), 'sherpa-oc-'));
   temps.push(dir);
   return dir;
-}
-
-function matchesWildcard(pattern: string, value: string) {
-  let pi = 0;
-  let vi = 0;
-  let starPi = -1;
-  let starVi = -1;
-  while (vi < value.length) {
-    if (
-      pi < pattern.length &&
-      (pattern[pi] === '?' || pattern[pi] === value[vi])
-    ) {
-      pi += 1;
-      vi += 1;
-      continue;
-    }
-    if (pi < pattern.length && pattern[pi] === '*') {
-      starPi = pi;
-      starVi = vi;
-      pi += 1;
-      continue;
-    }
-    if (starPi !== -1) {
-      pi = starPi + 1;
-      starVi += 1;
-      vi = starVi;
-      continue;
-    }
-    return false;
-  }
-  while (pi < pattern.length && pattern[pi] === '*') {
-    pi += 1;
-  }
-  return pi === pattern.length;
 }
 
 function opts(ctx: Ctx) {

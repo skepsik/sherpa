@@ -6,6 +6,21 @@ export type {
 } from './channel';
 export type { ChannelConfig, RunnerConfig } from './config';
 export type {
+  ConformanceAction,
+  ConformanceAskInfo,
+  ConformanceAskReply,
+  ConformanceCaseResult,
+  ConformanceCaseSpec,
+  ConformanceDriver,
+  ConformanceGrantSeed,
+  ConformanceLayout,
+  ConformancePreparedCase,
+  ConformanceProvokeInput,
+  ConformanceRightsSeed,
+  ConformanceSuiteResult,
+  ConformanceVerdict,
+} from './conformance';
+export type {
   OpenCodeHost,
   OpenCodeHostCreateSessionInput,
   OpenCodeHostEvent,
