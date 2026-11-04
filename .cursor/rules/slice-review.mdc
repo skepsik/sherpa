@@ -33,7 +33,7 @@ alwaysApply: false
 
 ```bash
 SID="ses_$(uuidgen | tr -d '-')"
-opencode run -s "$SID" --model openai/gpt-6-astra --title "Slice review: <номера задач>" --agent reviewer --file reviews/epic-<P>.prompt.md "<уточнение>"
+opencode run -s "$SID" --model opencode-go/glm-5.3-flash --title "Slice review: <номера задач>" --agent reviewer --file reviews/epic-<P>.prompt.md "<уточнение>"
 ```
 
 `<номера задач>` — номера issues этого набора через запятую (`4-1, 4-2`). Тот же `--title` на каждом вызове цикла.
