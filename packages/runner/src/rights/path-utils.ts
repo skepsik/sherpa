@@ -1,12 +1,5 @@
-import { existsSync, realpathSync } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  normalize,
-  resolve,
-} from 'node:path';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, normalize, resolve } from 'node:path';
 
 import type { GrantLevel } from '../types/registry';
 
@@ -46,49 +39,80 @@ export function normalizeLexicalPath(input: string): string {
 }
 
 /**
- * Запрошенный путь (без follow symlink) и реальный.
- * Несуществующий: realpath ближайшего существующего предка + хвост
- * (промежуточные symlink-каталоги не дают rw «снаружи»).
+ * Фактическая цель как open(2): обход сегментов с follow symlink;
+ * `..` применяется к уже разрешённому префиксу.
+ * Несуществующий хвост — после последнего существующего предка.
+ */
+export function resolveRealPathWalk(targetPath: string): string {
+  const trimmed = targetPath.trim();
+  if (!trimmed) {
+    throw new Error('path: пустой путь');
+  }
+  const absolute = isAbsolute(trimmed) ? trimmed : resolve(trimmed);
+  const segments = absolute.split('/').filter((segment) => segment.length > 0);
+
+  let current = '/';
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      current = current === '/' ? '/' : dirname(current);
+      continue;
+    }
+
+    const next = current === '/' ? `/${segment}` : `${current}/${segment}`;
+    if (!existsSync(next)) {
+      return stripTrailingSlash(
+        joinLexicalRest(current, segments.slice(index)),
+      );
+    }
+
+    try {
+      const stat = lstatSync(next);
+      current = stat.isSymbolicLink()
+        ? stripTrailingSlash(realpathSync(next))
+        : next;
+    } catch {
+      current = next;
+    }
+  }
+
+  return stripTrailingSlash(current);
+}
+
+/**
+ * Запрошенный путь (лексический, без follow) и реальный (walk как open(2):
+ * follow symlink по сегментам, `..` — после follow).
  */
 export function resolveTargetPaths(targetPath: string): {
   real: string;
   requested: string;
 } {
   const requested = normalizeLexicalPath(targetPath);
-  if (existsSync(requested)) {
-    try {
-      return {
-        real: normalizeLexicalPath(realpathSync(requested)),
-        requested,
-      };
-    } catch {
-      return { real: requested, requested };
-    }
-  }
+  return { real: resolveRealPathWalk(targetPath), requested };
+}
 
-  const missing: string[] = [];
-  let current = requested;
-  while (current !== '/' && current !== '') {
-    missing.unshift(basename(current));
-    const parent = dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-    if (!existsSync(current)) {
+/** Хвост без follow: `.` / `..` относительно уже разрешённого префикса. */
+function joinLexicalRest(base: string, segments: readonly string[]): string {
+  let current = base;
+  for (const segment of segments) {
+    if (segment === '.' || segment === '') {
       continue;
     }
-    try {
-      const realParent = normalizeLexicalPath(realpathSync(current));
-      const real =
-        missing.length === 0
-          ? realParent
-          : normalizeLexicalPath(join(realParent, ...missing));
-      return { real, requested };
-    } catch {
-      return { real: requested, requested };
+    if (segment === '..') {
+      current = current === '/' ? '/' : dirname(current);
+      continue;
     }
+    current = current === '/' ? `/${segment}` : `${current}/${segment}`;
   }
+  return current;
+}
 
-  return { real: requested, requested };
+function stripTrailingSlash(path: string) {
+  if (path.length > 1 && path.endsWith('/')) {
+    return path.replace(/\/+$/, '');
+  }
+  return path;
 }

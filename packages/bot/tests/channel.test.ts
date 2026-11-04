@@ -147,7 +147,59 @@ void describe('channel WebSocket', () => {
     assert.equal(calls, 0);
   });
 
-  void it('разные id не сериализуются очередью', async () => {
+  void it('один Place: execute строго по очереди, результаты first→second', async () => {
+    let releaseA!: () => void;
+    const gateA = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const started: string[] = [];
+    const finished: string[] = [];
+
+    const { channel, path, port } = await startChannel({
+      execute: async (command) => {
+        const text = command.type === 'send_message' ? command.text : '?';
+        started.push(text);
+        if (text === 'a') {
+          await gateA;
+        }
+        finished.push(text);
+        return okSend();
+      },
+    });
+    servers.push(channel);
+
+    const client = await connectClient(port, path, SECRET);
+    const messages = createMessageQueue(client);
+
+    client.send(
+      encodeOutbound('id-a', {
+        place: 'tg1:d:1',
+        text: 'a',
+        type: 'send_message',
+      }),
+    );
+    client.send(
+      encodeOutbound('id-b', {
+        place: 'tg1:d:1',
+        text: 'b',
+        type: 'send_message',
+      }),
+    );
+
+    await delay(20);
+    assert.deepEqual(started, ['a']);
+    releaseA();
+
+    const first = tryDecodeOutboundResult(await messages.next());
+    const second = tryDecodeOutboundResult(await messages.next());
+    assert.equal(first?.id, 'id-a');
+    assert.equal(second?.id, 'id-b');
+    assert.deepEqual(finished, ['a', 'b']);
+
+    client.close();
+  });
+
+  void it('разные Place: execute параллельно', async () => {
     let releaseA!: () => void;
     const gateA = new Promise<void>((resolve) => {
       releaseA = resolve;
@@ -156,8 +208,9 @@ void describe('channel WebSocket', () => {
 
     const { channel, path, port } = await startChannel({
       execute: async (command) => {
-        started.push(command.type === 'send_message' ? command.text : '?');
-        if (command.type === 'send_message' && command.text === 'a') {
+        const text = command.type === 'send_message' ? command.text : '?';
+        started.push(text);
+        if (text === 'a') {
           await gateA;
         }
         return okSend();
@@ -177,7 +230,7 @@ void describe('channel WebSocket', () => {
     );
     client.send(
       encodeOutbound('id-b', {
-        place: 'tg1:d:1',
+        place: 'tg1:d:2',
         text: 'b',
         type: 'send_message',
       }),

@@ -17,6 +17,9 @@ issues/issue-<P>-<K>.md
 
 Пример: `issues/issue-1-2.md`. Id в промптах: `issue-<P>-<K>`.
 
+<!-- review-kept: вне Scope issue-hf-1 — оркестратор допустил docs/chore naming issue-hf-* -->
+Hotfix между эпиками (не ребёнок MVP-эпика): `issues/issue-hf-<N>.md` (пример: `issue-hf-1`). Строка в `epics.md` обязательна.
+
 ## Фронтматтер
 
 Обязательное поле:

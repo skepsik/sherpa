@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
@@ -300,6 +306,7 @@ void describe('opencode expressLaunchRights', () => {
     const bad: LaunchRights = {
       cwd: '/tmp/proj',
       denyPatterns: [],
+      foreignClosures: [],
       foreignRoots: [{ level: 'none', path: '/tmp/x' }],
       ownRoot: { level: 'rw', path: '/tmp/proj' },
       registryDenyPaths: [],
@@ -310,6 +317,7 @@ void describe('opencode expressLaunchRights', () => {
     const badShell: LaunchRights = {
       cwd: '/tmp/proj',
       denyPatterns: [],
+      foreignClosures: [],
       foreignRoots: [],
       ownRoot: { level: 'rw', path: '/tmp/proj' },
       registryDenyPaths: [],
@@ -336,6 +344,230 @@ void describe('opencode expressLaunchRights', () => {
       !permissions.some(
         (rule) => rule.effect === 'deny' && rule.resource.includes('AGENTS.md'),
       ),
+    );
+    ctx.registry.close();
+  });
+
+  void it('hotfix A: symlink+.. — вердикт none согласован с express', () => {
+    const ctx = setupTree(temps);
+    const outside = join(ctx.root, 'outside');
+    const child = join(outside, 'child');
+    mkdirSync(child, { recursive: true });
+    writeFileSync(join(outside, 'secret.txt'), 'secret');
+    symlinkSync(child, join(ctx.cwd, 'link'));
+
+    const snap = ctx.registry.loadWorkdirRights(ctx.cwd);
+    const viaLinkDots = `${ctx.cwd}/link/../secret.txt`;
+    assert.equal(
+      resolvePathAccess(ctx.cwd, viaLinkDots, snap, opts(ctx)).level,
+      'none',
+    );
+
+    const { permissions } = expressLaunchRights(
+      buildLaunchRights(snap, opts(ctx)),
+    );
+    const secret = normalizeWorkdirPath(join(outside, 'secret.txt'));
+    assert.notEqual(
+      findEffect(permissions, 'external_directory', `${secret}`),
+      'allow',
+    );
+    assert.notEqual(findEffect(permissions, 'read', secret), 'allow');
+    ctx.registry.close();
+  });
+
+  void it('hotfix B: outside rw + child none — express закрывает child', () => {
+    const ctx = setupTree(temps);
+    mkdirSync(join(ctx.roots.dev, 'child'), { recursive: true });
+    const child = normalizeWorkdirPath(join(ctx.roots.dev, 'child'));
+    writeFileSync(join(child, 'f.txt'), 'x');
+    ctx.registry.upsertGrant({
+      cwd: ctx.cwd,
+      level: 'rw',
+      path: ctx.roots.dev,
+    });
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'none', path: child });
+
+    const snap = ctx.registry.loadWorkdirRights(ctx.cwd);
+    assert.equal(
+      resolvePathAccess(ctx.cwd, join(child, 'f.txt'), snap, opts(ctx)).level,
+      'none',
+    );
+
+    const launch = buildLaunchRights(snap, opts(ctx));
+    assert.deepEqual(launch.foreignClosures, [child]);
+    const { permissions } = expressLaunchRights(launch);
+
+    assert.equal(
+      findEffect(permissions, 'external_directory', `${ctx.roots.dev}/*`),
+      'allow',
+    );
+    assert.equal(
+      findEffect(permissions, 'external_directory', `${child}/f.txt`),
+      'deny',
+    );
+    assert.equal(findEffect(permissions, 'read', `${child}/f.txt`), 'deny');
+    assert.equal(findEffect(permissions, 'edit', `${child}/f.txt`), 'deny');
+    ctx.registry.close();
+  });
+
+  void it('hotfix B: вложенный ro под rw; одиночный none без корня', () => {
+    const ctx = setupTree(temps);
+    mkdirSync(join(ctx.roots.dev, 'nested'), { recursive: true });
+    const child = normalizeWorkdirPath(join(ctx.roots.dev, 'nested'));
+    ctx.registry.upsertGrant({
+      cwd: ctx.cwd,
+      level: 'rw',
+      path: ctx.roots.dev,
+    });
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'ro', path: child });
+    ctx.registry.upsertGrant({
+      cwd: ctx.cwd,
+      level: 'none',
+      path: ctx.roots.sibling,
+    });
+
+    const launch = buildLaunchRights(
+      ctx.registry.loadWorkdirRights(ctx.cwd),
+      opts(ctx),
+    );
+    assert.deepEqual(launch.foreignClosures, []);
+    assert.ok(
+      launch.foreignRoots.some((r) => r.path === child && r.level === 'ro'),
+    );
+
+    const { permissions } = expressLaunchRights(launch);
+    assert.equal(findEffect(permissions, 'edit', `${child}/f.txt`), 'deny');
+    assert.equal(
+      findEffect(permissions, 'external_directory', `${ctx.roots.sibling}/*`),
+      'ask',
+    );
+    ctx.registry.close();
+  });
+
+  void it('hotfix B: вложенный append под rw — edit закрыт, вердикт append', () => {
+    const ctx = setupTree(temps);
+    mkdirSync(join(ctx.roots.dev, 'nested'), { recursive: true });
+    const child = normalizeWorkdirPath(join(ctx.roots.dev, 'nested'));
+    writeFileSync(join(child, 'f.txt'), 'x');
+    ctx.registry.upsertGrant({
+      cwd: ctx.cwd,
+      level: 'rw',
+      path: ctx.roots.dev,
+    });
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'append', path: child });
+
+    const snap = ctx.registry.loadWorkdirRights(ctx.cwd);
+    assert.equal(
+      resolvePathAccess(ctx.cwd, join(child, 'f.txt'), snap, opts(ctx)).level,
+      'append',
+    );
+
+    const { permissions } = expressLaunchRights(
+      buildLaunchRights(snap, opts(ctx)),
+    );
+    assert.equal(findEffect(permissions, 'edit', `${child}/f.txt`), 'deny');
+    assert.equal(
+      findEffect(permissions, 'external_directory', `${child}/*`),
+      'allow',
+    );
+    ctx.registry.close();
+  });
+
+  void it('hotfix B: несколько уровней none под rw — closures и express', () => {
+    const ctx = setupTree(temps);
+    mkdirSync(join(ctx.roots.dev, 'mid', 'deep'), { recursive: true });
+    const mid = normalizeWorkdirPath(join(ctx.roots.dev, 'mid'));
+    const deep = normalizeWorkdirPath(join(ctx.roots.dev, 'mid', 'deep'));
+    writeFileSync(join(deep, 'f.txt'), 'x');
+    ctx.registry.upsertGrant({
+      cwd: ctx.cwd,
+      level: 'rw',
+      path: ctx.roots.dev,
+    });
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'none', path: mid });
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'none', path: deep });
+
+    const snap = ctx.registry.loadWorkdirRights(ctx.cwd);
+    assert.equal(
+      resolvePathAccess(ctx.cwd, join(deep, 'f.txt'), snap, opts(ctx)).level,
+      'none',
+    );
+
+    const launch = buildLaunchRights(snap, opts(ctx));
+    assert.deepEqual(launch.foreignClosures, [mid, deep]);
+    const { permissions } = expressLaunchRights(launch);
+    assert.equal(
+      findEffect(permissions, 'external_directory', `${deep}/f.txt`),
+      'deny',
+    );
+    assert.equal(findEffect(permissions, 'read', `${deep}/f.txt`), 'deny');
+    ctx.registry.close();
+  });
+
+  void it('hotfix C: ro на предка cwd — запись в cwd открыта, снаружи закрыта', () => {
+    const ctx = setupTree(temps);
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'ro', path: ctx.root });
+
+    const snap = ctx.registry.loadWorkdirRights(ctx.cwd);
+    assert.equal(
+      resolvePathAccess(ctx.cwd, join(ctx.cwd, 'file.txt'), snap, opts(ctx))
+        .level,
+      'rw',
+    );
+    assert.equal(
+      resolvePathAccess(
+        ctx.cwd,
+        join(ctx.roots.sibling, 'out.txt'),
+        snap,
+        opts(ctx),
+      ).level,
+      'ro',
+    );
+
+    const { permissions } = expressLaunchRights(
+      buildLaunchRights(snap, opts(ctx)),
+    );
+    assert.notEqual(
+      findEffect(permissions, 'edit', `${ctx.cwd}/file.txt`),
+      'deny',
+    );
+    assert.equal(
+      findEffect(permissions, 'edit', `${ctx.roots.sibling}/out.txt`),
+      'deny',
+    );
+    ctx.registry.close();
+  });
+
+  void it('hotfix C: append на предка cwd — запись в cwd открыта, снаружи закрыта', () => {
+    const ctx = setupTree(temps);
+    ctx.registry.upsertGrant({ cwd: ctx.cwd, level: 'append', path: ctx.root });
+
+    const snap = ctx.registry.loadWorkdirRights(ctx.cwd);
+    assert.equal(
+      resolvePathAccess(ctx.cwd, join(ctx.cwd, 'file.txt'), snap, opts(ctx))
+        .level,
+      'rw',
+    );
+    assert.equal(
+      resolvePathAccess(
+        ctx.cwd,
+        join(ctx.roots.sibling, 'out.txt'),
+        snap,
+        opts(ctx),
+      ).level,
+      'append',
+    );
+
+    const { permissions } = expressLaunchRights(
+      buildLaunchRights(snap, opts(ctx)),
+    );
+    assert.notEqual(
+      findEffect(permissions, 'edit', `${ctx.cwd}/file.txt`),
+      'deny',
+    );
+    assert.equal(
+      findEffect(permissions, 'edit', `${ctx.roots.sibling}/out.txt`),
+      'deny',
     );
     ctx.registry.close();
   });
