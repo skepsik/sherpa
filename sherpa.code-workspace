@@ -1,0 +1,13 @@
+{
+  "folders": [
+    {
+      "name": "sherpa",
+      "path": "."
+    },
+    {
+      "name": "issues",
+      "path": "../sherpa.design/issues"
+    }
+  ],
+  "settings": {}
+}
