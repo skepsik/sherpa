@@ -5,6 +5,8 @@ export type {
   InboundEventType,
   InboundMessage,
   InboundQuestionAnswer,
+  InboundSessionBreak,
+  MessageDelivery,
 } from './inbound';
 
 export type {

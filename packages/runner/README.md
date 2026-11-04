@@ -6,11 +6,12 @@
 
 См. корневой `.env.example`.
 
-| Переменная              | Обязательна | Смысл                                       |
-| ----------------------- | ----------- | ------------------------------------------- |
-| `SHERPA_CHANNEL_URL`    | да          | полный `ws://…` / `wss://…` URL канала бота |
-| `SHERPA_CHANNEL_SECRET` | да          | секрет рукопожатия (тот же, что у бота)     |
-| `SHERPA_REGISTRY_PATH`  | да          | путь к файлу SQLite реестра                 |
+| Переменная                | Обязательна | Смысл                                                         |
+| ------------------------- | ----------- | ------------------------------------------------------------- |
+| `SHERPA_CHANNEL_URL`      | да          | полный `ws://…` / `wss://…` URL канала бота                   |
+| `SHERPA_CHANNEL_SECRET`   | да          | секрет рукопожатия (тот же, что у бота)                       |
+| `SHERPA_REGISTRY_PATH`    | да          | путь к файлу SQLite реестра                                   |
+| `SHERPA_MID_RUN_DELIVERY` | нет         | дефолт mid-run: `interject` \| `after`; нет ключа — interject |
 
 Локально канал: `ws://127.0.0.1:8787/v1/channel` (host/port/path — у бота).
 
@@ -29,11 +30,15 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar; `foreignClosures` для вложенного `none` под чужим корнем). Реальный путь — walk как open(2) (follow symlink по сегментам, `..` после follow). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
 
-OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Busy push — steer; mid-run after/break — 5-4. Permission ask → `send_question` / `question_answer` / `answerPermission` (см. ниже). Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
+OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Mid-run: `interject`→steer, `after`→queue, `session_break`→interrupt. Permission ask → `send_question` / `question_answer` / `answerPermission` (см. ниже). Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
+
+## Mid-run
+
+Дефолт доставки текста без `delivery` на wire — `SHERPA_MID_RUN_DELIVERY` (или `interject`). Разовый override — поле `message.delivery` с бота (`/interject` / `/after`). `session_break` (`/stop`): при активном ходе → `interruptTurn` (сессию не закрывает); без живой сессии или без хода — no-op + log. Очередь `message` раннера — pre-harness / serial drain; поверх OpenCode queue второй очереди нет. `question_answer` — не mid-run текст.
 
 ## Порт сессии
 
-Узкий порт харнесса (`SessionPort`): `start` / `resume` → `OpenSession` (`pushMessage`, `subscribe`, `abort`, `answerPermission`). События стрима: `turn_started` / `assistant_text` / `turn_ended` / `error` / `permission_ask` / `closed`. Нормальный конец хода сессию не закрывает.
+Узкий порт харнесса (`SessionPort`): `start` / `resume` → `OpenSession` (`pushMessage(text, delivery)`, `interruptTurn`, `subscribe`, `abort`, `answerPermission`). События стрима: `turn_started` / `assistant_text` / `turn_ended` / `error` / `permission_ask` / `closed`. Нормальный конец хода сессию не закрывает.
 
 ### Permission ask
 
@@ -114,9 +119,10 @@ Default таймаут ожидания исхода — 60 с.
 1. Дедуп `eventId` (in-memory набор на процесс). Повтор — тихий drop + лог; lookup и ответы не делаются. После рестарта раннера набор пуст: тот же `eventId` с бота после рестарта бота+раннера может обработаться снова.
 2. Lookup `places` по opaque `Place`.
 3. Нет строки — `send_message` «место вне реестра» **с id этого места** в тексте; в очередь сообщений не ставится.
-4. `message` при наличии строки — job в очередь сообщений места; serial drain = ensure handle + `pushMessage` в порт (ход не ждём). Busy-reject пользователю нет.
-5. `question_answer` — **не** в FIFO сообщений; доставка в pending permission ask по wire `requestId` (см. Permission ask).
-6. Сбой outbound на стриме — лог; push job при исключении — следующий job всё же берётся.
+4. `message` при наличии строки — job в очередь сообщений места; serial drain = ensure handle + `pushMessage` с resolved delivery (ход не ждём). Busy-reject пользователю нет.
+5. `session_break` — interrupt активного хода или no-op+log (см. Mid-run); не в FIFO сообщений.
+6. `question_answer` — **не** в FIFO сообщений; доставка в pending permission ask по wire `requestId` (см. Permission ask).
+7. Сбой outbound на стриме — лог; push job при исключении — следующий job всё же берётся.
 
 Проверка вручную: поднять бота и раннер (Node с `await using`, см. адаптер README), seed места (`npm run seed -w @sherpa/runner`), написать в seed-Place — ответ OpenCode; в неизвестный Place — «вне реестра» с id.
 
@@ -139,5 +145,6 @@ npm run dev:runner
 - `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
 - `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
-- `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, loadWorkdirRights, registryPath, sessionPort, send })` → `{ handleInbound }`.
+- `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, loadWorkdirRights, midRunDefaultDelivery, registryPath, sessionPort, send })` → `{ handleInbound }`.
+- `loadMidRunDefaultDelivery` — `SHERPA_MID_RUN_DELIVERY` / дефолт `interject`.
 - `classifyOutboundOutcome` — сверка исхода с командой.

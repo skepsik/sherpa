@@ -46,7 +46,7 @@ export type OpenCodeHostPermissionReplyInput = {
 };
 
 export type OpenCodeHostPromptInput = {
-  delivery: 'steer';
+  delivery: 'queue' | 'steer';
   sessionId: string;
   text: string;
 };

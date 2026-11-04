@@ -48,7 +48,7 @@ void describe('opencode session port (fake host)', () => {
       'deny',
     );
 
-    await session.pushMessage('привет');
+    await session.pushMessage('привет', 'interject');
     await waitFor(
       () => events.some((event) => event.type === 'turn_ended'),
       1000,
@@ -86,7 +86,12 @@ void describe('opencode session port (fake host)', () => {
       setPlaceSessionId: (key, id) => registry.setPlaceSessionId(key, id),
     });
 
-    await slots.pushMessage({ cwd, key: placeKey, text: 'job' });
+    await slots.pushMessage({
+      cwd,
+      delivery: 'interject',
+      key: placeKey,
+      text: 'job',
+    });
     await waitFor(
       () => outbound.some((event) => event.type === 'turn_ended'),
       1000,
@@ -127,7 +132,7 @@ void describe('opencode session port (fake host)', () => {
 
     const events: SessionEvent[] = [];
     resumed.subscribe((event) => events.push(event));
-    await resumed.pushMessage('after-resume');
+    await resumed.pushMessage('after-resume', 'interject');
     await waitFor(
       () => events.some((event) => event.type === 'turn_ended'),
       1000,
@@ -167,7 +172,12 @@ void describe('opencode session port (fake host)', () => {
       setPlaceSessionId: (key, id) => registry.setPlaceSessionId(key, id),
     });
 
-    await slots.pushMessage({ cwd, key: placeKey, text: 'after-fail' });
+    await slots.pushMessage({
+      cwd,
+      delivery: 'interject',
+      key: placeKey,
+      text: 'after-fail',
+    });
     assert.notEqual(registry.getPlaceSessionId(placeKey), staleId);
     assert.ok(registry.getPlaceSessionId(placeKey).startsWith('ses_fake_'));
     assert.equal(host.creates.length, 1);
@@ -248,6 +258,60 @@ void describe('opencode session port (fake host)', () => {
     b.registry.close();
   });
 
+  void it('interject → steer; after → queue на host.prompt', async () => {
+    const { cwd, registry, registryPath } = setupWorkdir(temps);
+    const host = createOpenCodeFakeHost();
+    const port = createOpenCodeSessionPort({
+      createHost: async () => host,
+      loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
+      registryPath,
+    });
+
+    const session = await port.start({ cwd });
+    await session.pushMessage('a', 'interject');
+    await session.pushMessage('b', 'after');
+
+    assert.deepEqual(
+      host.prompts.map((p) => ({ delivery: p.delivery, text: p.text })),
+      [
+        { delivery: 'steer', text: 'a' },
+        { delivery: 'queue', text: 'b' },
+      ],
+    );
+
+    registry.close();
+  });
+
+  void it('interruptTurn → host.interrupt; turn_ended без closed', async () => {
+    const { cwd, registry, registryPath } = setupWorkdir(temps);
+    const host = createOpenCodeFakeHost();
+    const port = createOpenCodeSessionPort({
+      createHost: async () => host,
+      loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
+      registryPath,
+    });
+
+    const events: SessionEvent[] = [];
+    const session = await port.start({ cwd });
+    session.subscribe((event) => events.push(event));
+
+    await session.interruptTurn();
+    await waitFor(
+      () => events.some((event) => event.type === 'turn_ended'),
+      1000,
+    );
+    assert.ok(!events.some((event) => event.type === 'closed'));
+
+    await session.pushMessage('после-break', 'interject');
+    await waitFor(
+      () => events.filter((event) => event.type === 'turn_ended').length >= 2,
+      1000,
+    );
+    assert.equal(host.prompts.length, 1);
+
+    registry.close();
+  });
+
   void it('нормальный конец хода — следующий push без cold start', async () => {
     const { cwd, registry, registryPath } = setupWorkdir(temps);
     const host = createOpenCodeFakeHost();
@@ -261,14 +325,14 @@ void describe('opencode session port (fake host)', () => {
     const session = await port.start({ cwd });
     session.subscribe((event) => events.push(event));
 
-    await session.pushMessage('one');
+    await session.pushMessage('one', 'interject');
     await waitFor(
       () => events.filter((event) => event.type === 'turn_ended').length >= 1,
       1000,
     );
     assert.equal(host.creates.length, 1);
 
-    await session.pushMessage('two');
+    await session.pushMessage('two', 'interject');
     await waitFor(
       () => events.filter((event) => event.type === 'turn_ended').length >= 2,
       1000,
@@ -446,7 +510,10 @@ void describe('opencode session port (fake host)', () => {
 
     const session = await port.start({ cwd });
     await session.abort();
-    await assert.rejects(() => session.pushMessage('late'), /сессия закрыта/);
+    await assert.rejects(
+      () => session.pushMessage('late', 'interject'),
+      /сессия закрыта/,
+    );
     assert.equal(host.prompts.length, 0);
 
     registry.close();
@@ -473,7 +540,7 @@ void describe('opencode session port (fake host)', () => {
     const secondEvents: SessionEvent[] = [];
     const second = await port.start({ cwd });
     second.subscribe((event) => secondEvents.push(event));
-    await second.pushMessage('again');
+    await second.pushMessage('again', 'interject');
     await waitFor(
       () => secondEvents.some((event) => event.type === 'turn_ended'),
       1000,
@@ -506,10 +573,13 @@ void describe('opencode session port (fake host)', () => {
     const second = await port.resume({ cwd, sessionId });
     assert.equal(second.sessionId, sessionId);
     assert.ok(firstEvents.some((event) => event.type === 'closed'));
-    await assert.rejects(() => first.pushMessage('orphan'), /сессия закрыта/);
+    await assert.rejects(
+      () => first.pushMessage('orphan', 'interject'),
+      /сессия закрыта/,
+    );
 
     second.subscribe((event) => secondEvents.push(event));
-    await second.pushMessage('owner');
+    await second.pushMessage('owner', 'interject');
     await waitFor(
       () => secondEvents.some((event) => event.type === 'turn_ended'),
       1000,

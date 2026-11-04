@@ -15,7 +15,7 @@ import { WebSocketServer } from 'ws';
 import type { ChannelClient } from '../src/types';
 
 import { createChannelClient } from '../src/channel';
-import { loadChannelConfig } from '../src/config';
+import { loadChannelConfig, loadMidRunDefaultDelivery } from '../src/config';
 
 const SECRET = 'runner-channel-secret';
 
@@ -46,6 +46,34 @@ void describe('loadChannelConfig', () => {
     });
     assert.equal(config.secret, SECRET);
     assert.equal(config.url, 'ws://127.0.0.1:8787/v1/channel');
+  });
+});
+
+void describe('loadMidRunDefaultDelivery', () => {
+  void it('нет ключа / пусто — interject', () => {
+    assert.equal(loadMidRunDefaultDelivery({}), 'interject');
+    assert.equal(
+      loadMidRunDefaultDelivery({ SHERPA_MID_RUN_DELIVERY: '  ' }),
+      'interject',
+    );
+  });
+
+  void it('interject / after', () => {
+    assert.equal(
+      loadMidRunDefaultDelivery({ SHERPA_MID_RUN_DELIVERY: 'after' }),
+      'after',
+    );
+    assert.equal(
+      loadMidRunDefaultDelivery({ SHERPA_MID_RUN_DELIVERY: 'interject' }),
+      'interject',
+    );
+  });
+
+  void it('невалидное значение — отказ', () => {
+    assert.throws(
+      () => loadMidRunDefaultDelivery({ SHERPA_MID_RUN_DELIVERY: 'steer' }),
+      /SHERPA_MID_RUN_DELIVERY/,
+    );
   });
 });
 

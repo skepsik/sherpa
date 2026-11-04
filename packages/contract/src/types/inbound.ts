@@ -18,12 +18,15 @@ export type InboundEnvelope = {
   v: WireVersion;
 };
 
-export type InboundEvent = InboundMessage | InboundQuestionAnswer;
+export type InboundEvent =
+  InboundMessage | InboundQuestionAnswer | InboundSessionBreak;
 
-export type InboundEventType = 'message' | 'question_answer';
+export type InboundEventType = 'message' | 'question_answer' | 'session_break';
 
 /** Текст пользователя в месте разговора. */
 export type InboundMessage = {
+  /** Разовый override; нет поля — дефолт раннера. */
+  delivery?: MessageDelivery;
   place: Place;
   /** Непустой текст сообщения. */
   text: string;
@@ -41,3 +44,15 @@ export type InboundQuestionAnswer = {
   requestId: string;
   type: 'question_answer';
 };
+
+/** Явный break текущего хода; без текста задачи. */
+export type InboundSessionBreak = {
+  place: Place;
+  type: 'session_break';
+};
+
+/**
+ * Режим mid-run доставки текста (transport).
+ * Нет поля на `message` — дефолт раннера.
+ */
+export type MessageDelivery = 'after' | 'interject';

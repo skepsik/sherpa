@@ -1,3 +1,5 @@
+import type { MessageDelivery } from '@sherpa/contract';
+
 /** Порт сессии харнесса (адаптер). */
 
 export type OpenSession = {
@@ -10,7 +12,9 @@ export type OpenSession = {
     decision: SessionPermissionDecision;
     requestId: string;
   }): Promise<void>;
-  pushMessage(text: string): Promise<void>;
+  /** Прервать текущий ход (break); сессию не закрывает. */
+  interruptTurn(): Promise<void>;
+  pushMessage(text: string, delivery: MessageDelivery): Promise<void>;
   readonly sessionId: string;
   subscribe(listener: (event: SessionEvent) => void): void;
 };
@@ -26,15 +30,23 @@ export type OpenSessionDouble = OpenSession & {
     resource: string;
   }): Promise<SessionPermissionDecision>;
   isAlive(): boolean;
+  isTurnActive(): boolean;
   kill(): void;
-  readonly pushes: string[];
+  readonly pushes: { delivery: MessageDelivery; text: string }[];
 };
 
 export type PlaceSessionSlots = {
   dropHandle(key: string): void;
   findLiveSession(key: string): null | OpenSession;
   getGeneration(key: string): number;
-  pushMessage(input: { cwd: string; key: string; text: string }): Promise<void>;
+  hasActiveTurn(key: string): boolean;
+  interruptTurn(key: string): Promise<void>;
+  pushMessage(input: {
+    cwd: string;
+    delivery: MessageDelivery;
+    key: string;
+    text: string;
+  }): Promise<void>;
 };
 
 export type PlaceSessionSlotsDeps = {
@@ -53,8 +65,14 @@ export type SessionDoubleCall =
       sessionId: string;
       type: 'answer_permission';
     }
-  | { sessionId: string; text: string; type: 'push' }
-  | { sessionId: string; type: 'abort' };
+  | {
+      delivery: MessageDelivery;
+      sessionId: string;
+      text: string;
+      type: 'push';
+    }
+  | { sessionId: string; type: 'abort' }
+  | { sessionId: string; type: 'interrupt_turn' };
 
 export type SessionEvent =
   | {

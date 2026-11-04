@@ -31,8 +31,16 @@ export function createTelegramReceiver(options: {
       }
     }
 
+    if (mapped.userReply !== null) {
+      try {
+        await ctx.reply(mapped.userReply);
+      } catch (error) {
+        console.warn('userReply failed', error);
+      }
+    }
+
     if (mapped.inbound === null) {
-      if (shouldLogDrop(ctx.update)) {
+      if (mapped.userReply === null && shouldLogDrop(ctx.update)) {
         console.warn('inbound dropped', {
           update_id: ctx.update.update_id,
         });

@@ -1,3 +1,5 @@
+import type { MessageDelivery } from '@sherpa/contract';
+
 import type {
   OpenSessionDouble,
   SessionDoubleCall,
@@ -11,6 +13,11 @@ import type {
 import { SessionResumeError } from './resume-error';
 
 type DoubleOptions = {
+  /**
+   * Не завершать ход по таймеру после push — только `interruptTurn` / `kill`.
+   * Для тестов mid-run break при «живом» ходе.
+   */
+  holdTurn?: boolean;
   /** Стабильный префикс session_id; иначе `double-`. */
   sessionIdPrefix?: string;
 };
@@ -23,6 +30,7 @@ export function createSessionTestDouble(
   options: DoubleOptions = {},
 ): SessionTestDouble {
   const prefix = options.sessionIdPrefix ?? 'double-';
+  const holdTurn = options.holdTurn === true;
   const calls: SessionDoubleCall[] = [];
   const opened: OpenSessionDouble[] = [];
   const resumeFailIds = new Set<string>();
@@ -39,7 +47,7 @@ export function createSessionTestDouble(
     let alive = true;
     let turnActive = false;
     let endScheduled = false;
-    const pushes: string[] = [];
+    const pushes: { delivery: MessageDelivery; text: string }[] = [];
 
     function emit(event: SessionEvent) {
       for (const listener of listeners) listener(event);
@@ -98,8 +106,19 @@ export function createSessionTestDouble(
           });
         });
       },
+      async interruptTurn() {
+        calls.push({ sessionId, type: 'interrupt_turn' });
+        if (!alive || !turnActive) return;
+        endScheduled = false;
+        pendingTexts.length = 0;
+        turnActive = false;
+        emit({ type: 'turn_ended' });
+      },
       isAlive() {
         return alive;
+      },
+      isTurnActive() {
+        return turnActive;
       },
       kill() {
         if (!alive) return;
@@ -110,18 +129,18 @@ export function createSessionTestDouble(
         emit({ type: 'closed' });
       },
       pushes,
-      async pushMessage(text: string) {
+      async pushMessage(text: string, delivery: MessageDelivery) {
         if (!alive) {
           throw new Error(`pushMessage: сессия закрыта (${sessionId})`);
         }
-        calls.push({ sessionId, text, type: 'push' });
-        pushes.push(text);
+        calls.push({ delivery, sessionId, text, type: 'push' });
+        pushes.push({ delivery, text });
         pendingTexts.push(text);
         if (!turnActive) {
           turnActive = true;
           emit({ type: 'turn_started' });
         }
-        scheduleTurnEnd();
+        if (!holdTurn) scheduleTurnEnd();
       },
       get sessionId() {
         return sessionId;

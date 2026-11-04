@@ -1,3 +1,5 @@
+import type { MessageDelivery } from '@sherpa/contract';
+
 import type { ChannelConfig, RegistryConfig, RunnerConfig } from './types';
 
 /** `SHERPA_CHANNEL_URL` + `SHERPA_CHANNEL_SECRET`; без — отказ. */
@@ -8,6 +10,19 @@ export function loadChannelConfig(
   const url = requireEnv(env, 'SHERPA_CHANNEL_URL');
   validateChannelUrl(url);
   return { secret, url };
+}
+
+/**
+ * Дефолт mid-run: `SHERPA_MID_RUN_DELIVERY` = `interject` | `after`.
+ * Нет ключа / пусто — `interject`.
+ */
+export function loadMidRunDefaultDelivery(
+  env: NodeJS.ProcessEnv = process.env,
+): MessageDelivery {
+  const raw = env.SHERPA_MID_RUN_DELIVERY?.trim();
+  if (raw === undefined || raw === '') return 'interject';
+  if (raw === 'interject' || raw === 'after') return raw;
+  throw new Error('SHERPA_MID_RUN_DELIVERY: ожидается interject или after');
 }
 
 /** `SHERPA_REGISTRY_PATH` — файл SQLite реестра (или DSN того же ключа). */
@@ -23,6 +38,7 @@ export function loadRunnerConfig(
 ): RunnerConfig {
   return {
     channel: loadChannelConfig(env),
+    midRunDefaultDelivery: loadMidRunDefaultDelivery(env),
     registry: loadRegistryConfig(env),
   };
 }

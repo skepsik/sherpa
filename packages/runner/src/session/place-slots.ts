@@ -9,6 +9,7 @@ import { SessionResumeError } from './resume-error';
 type LiveHandle = {
   generation: number;
   session: OpenSession;
+  turnActive: boolean;
 };
 
 type PlaceSlotState = {
@@ -67,10 +68,20 @@ export function createPlaceSessionSlots(
     const handle: LiveHandle = {
       generation: slot.generation,
       session,
+      turnActive: false,
     };
     slot.live = handle;
 
     session.subscribe((event) => {
+      if (event.type === 'turn_started') {
+        handle.turnActive = true;
+      } else if (
+        event.type === 'turn_ended' ||
+        event.type === 'closed' ||
+        event.type === 'error'
+      ) {
+        handle.turnActive = false;
+      }
       if (event.type === 'closed') {
         if (slot.live !== handle) return;
         markDead(slot, handle);
@@ -104,6 +115,18 @@ export function createPlaceSessionSlots(
     getGeneration(key) {
       return getOrCreateSlot(key).generation;
     },
+    hasActiveTurn(key) {
+      const slot = slots.get(key);
+      if (slot === undefined || slot.live === null) return false;
+      if (slot.live.generation !== slot.generation) return false;
+      return slot.live.turnActive;
+    },
+    async interruptTurn(key) {
+      const slot = slots.get(key);
+      if (slot === undefined || slot.live === null) return;
+      if (slot.live.generation !== slot.generation) return;
+      await slot.live.session.interruptTurn();
+    },
     async pushMessage(input) {
       const handle = await ensureLiveHandle(input.key, input.cwd);
       const slot = getOrCreateSlot(input.key);
@@ -112,7 +135,7 @@ export function createPlaceSessionSlots(
           `pushMessage: чужой generation (${handle.generation}≠${slot.generation})`,
         );
       }
-      await handle.session.pushMessage(input.text);
+      await handle.session.pushMessage(input.text, input.delivery);
     },
   };
 }

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { InboundMessage, InboundQuestionAnswer } from '../src/types';
+import type {
+  InboundMessage,
+  InboundQuestionAnswer,
+  InboundSessionBreak,
+} from '../src/types';
 
 import { encodeInbound, tryDecodeInbound } from '../src/inbound';
 import { WIRE_VERSION } from '../src/wire';
@@ -40,6 +44,38 @@ void describe('inbound encode/decode', () => {
     };
     const decoded = tryDecodeInbound(encodeInbound('99', event));
     assert.deepEqual(decoded, { event, eventId: '99' });
+  });
+
+  void it('roundtrip message с delivery', () => {
+    const event: InboundMessage = {
+      delivery: 'after',
+      place: 'tg1:d:chat-1',
+      text: 'потом',
+      type: 'message',
+    };
+    const decoded = tryDecodeInbound(encodeInbound('43', event));
+    assert.deepEqual(decoded, { event, eventId: '43' });
+  });
+
+  void it('roundtrip session_break', () => {
+    const event: InboundSessionBreak = {
+      place: 'tg1:d:chat-1',
+      type: 'session_break',
+    };
+    const decoded = tryDecodeInbound(encodeInbound('44', event));
+    assert.deepEqual(decoded, { event, eventId: '44' });
+  });
+
+  void it('message без delivery на проводе → без поля', () => {
+    const raw = inboundWire({
+      place: 'p1',
+      text: 'hi',
+      type: 'message',
+    });
+    assert.deepEqual(tryDecodeInbound(raw), {
+      event: { place: 'p1', text: 'hi', type: 'message' },
+      eventId: 'upd-1',
+    });
   });
 
   void it('отказ на невалидный wire', () => {
@@ -165,6 +201,15 @@ void describe('inbound encode/decode', () => {
           place: 'p1',
           requestId: 'r1',
           type: 'callback',
+        }),
+      },
+      {
+        name: 'невалидный delivery',
+        raw: inboundWire({
+          delivery: 'steer',
+          place: 'p1',
+          text: 'hi',
+          type: 'message',
         }),
       },
     ];

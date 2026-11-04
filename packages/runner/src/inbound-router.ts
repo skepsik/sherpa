@@ -1,4 +1,4 @@
-import type { OutboundCommand } from '@sherpa/contract';
+import type { MessageDelivery, OutboundCommand } from '@sherpa/contract';
 
 import type {
   PendingPermissionAsk,
@@ -32,13 +32,15 @@ export function buildOutsideRegistryText(placeKey: string) {
 
 /**
  * Маршрутизация inbound: дедуп → lookup → «вне реестра» / очередь /
- * `question_answer` → pending ask. Drain `message` → порт сессии (push).
+ * `question_answer` → pending ask; `session_break` → interrupt при ходе.
+ * Drain `message` → порт сессии (push + delivery).
  */
 export function createInboundRouter(deps: InboundRouterDeps): InboundRouter {
   const {
     findCwdByPlaceKey,
     getPlaceSessionId,
     loadWorkdirRights,
+    midRunDefaultDelivery,
     registryPath,
     send,
     sessionPort,
@@ -84,8 +86,21 @@ export function createInboundRouter(deps: InboundRouterDeps): InboundRouter {
     setPlaceSessionId,
   });
 
+  async function drainMessageJob(job: MessageJob) {
+    const delivery = resolveMessageDelivery(
+      job.event.delivery,
+      midRunDefaultDelivery,
+    );
+    await placeSessions.pushMessage({
+      cwd: job.cwd,
+      delivery,
+      key: job.key,
+      text: job.event.text,
+    });
+  }
+
   const queues = createPlaceMessageQueues({
-    drainJob: (job) => drainMessageJob(job, placeSessions),
+    drainJob: (job) => drainMessageJob(job),
   });
 
   return {
@@ -118,6 +133,11 @@ export function createInboundRouter(deps: InboundRouterDeps): InboundRouter {
           requestId: inbound.event.requestId,
           send,
         });
+        return;
+      }
+
+      if (inbound.event.type === 'session_break') {
+        await handleSessionBreak(key, placeSessions);
         return;
       }
 
@@ -155,17 +175,6 @@ function buildAnswerResolveText(
     return buildPermissionResolveText(buttonData);
   }
   return 'Отклонено.';
-}
-
-async function drainMessageJob(
-  job: MessageJob,
-  placeSessions: PlaceSessionSlots,
-) {
-  await placeSessions.pushMessage({
-    cwd: job.cwd,
-    key: job.key,
-    text: job.event.text,
-  });
 }
 
 async function handlePermissionAsk(
@@ -305,6 +314,22 @@ async function handleQuestionAnswer(input: {
   }
 }
 
+async function handleSessionBreak(
+  placeKey: string,
+  placeSessions: PlaceSessionSlots,
+) {
+  const session = placeSessions.findLiveSession(placeKey);
+  if (session === null) {
+    console.warn('session_break: нет живой сессии, no-op', placeKey);
+    return;
+  }
+  if (!placeSessions.hasActiveTurn(placeKey)) {
+    console.warn('session_break: нет активного хода, no-op', placeKey);
+    return;
+  }
+  await placeSessions.interruptTurn(placeKey);
+}
+
 async function handleSessionEvent(
   key: string,
   event: SessionEvent,
@@ -348,6 +373,13 @@ async function handleSessionEvent(
       });
       return;
   }
+}
+
+function resolveMessageDelivery(
+  override: MessageDelivery | undefined,
+  fallback: MessageDelivery,
+): MessageDelivery {
+  return override ?? fallback;
 }
 
 async function sendBestEffort(
