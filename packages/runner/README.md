@@ -29,11 +29,15 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar; `foreignClosures` для вложенного `none` под чужим корнем). Реальный путь — walk как open(2) (follow symlink по сегментам, `..` после follow). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
 
-OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Busy push — steer; mid-run after/break — 5-4. Permission ask → событие + лог; UI — 5-3. Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
+OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Busy push — steer; mid-run after/break — 5-4. Permission ask → `send_question` / `question_answer` / `answerPermission` (см. ниже). Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
 
 ## Порт сессии
 
-Узкий порт харнесса (`SessionPort`): `start` / `resume` → `OpenSession` (`pushMessage`, `subscribe`, `abort`). События стрима: `turn_started` / `assistant_text` / `turn_ended` / `error` / `permission_ask` / `closed`. Нормальный конец хода сессию не закрывает.
+Узкий порт харнесса (`SessionPort`): `start` / `resume` → `OpenSession` (`pushMessage`, `subscribe`, `abort`, `answerPermission`). События стрима: `turn_started` / `assistant_text` / `turn_ended` / `error` / `permission_ask` / `closed`. Нормальный конец хода сессию не закрывает.
+
+### Permission ask
+
+Харнесс → событие `permission_ask` (action + resource + requestId харнесса) → раннер шлёт `send_question` в Place: кнопки с `data` из алфавита **`allow` | `deny` | `always`** (текст смысла не в `data`). На проводе — короткий wire `requestId` (`pN`); бюджет `requestId`+`data` ≤48 байт UTF-8 на кнопку. Ответ `question_answer` → маппинг в решение порта: `allow`→`once`, `always`→`always`, `deny`→`reject` → `answerPermission` → харнесс; UI закрывается `resolve_question`. `deny` / `deny_global` / константный запрет реестра / явный `grant none` / shell подтверждением не снимаются (`resolvePathAccess` + сверка): даже на `allow`/`always` в харнесс уходит `reject`. Нет pending (рестарт / повтор / чужой id) — drop + log, без stub-ack. Teardown (closed / error / abort) снимает pending, best-effort `resolve_question`, поздний ответ — как «нет pending». Pending ask — память процесса; после рестарта раннера из БД не восстанавливается.
 
 Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем push. Resume-fail → сброс `session_id` + cold start. `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
 
@@ -111,7 +115,7 @@ Default таймаут ожидания исхода — 60 с.
 2. Lookup `places` по opaque `Place`.
 3. Нет строки — `send_message` «место вне реестра» **с id этого места** в тексте; в очередь сообщений не ставится.
 4. `message` при наличии строки — job в очередь сообщений места; serial drain = ensure handle + `pushMessage` в порт (ход не ждём). Busy-reject пользователю нет.
-5. `question_answer` — **не** в FIFO сообщений; stub-ack «Принято.» по отдельному пути (permission UI — 5-3).
+5. `question_answer` — **не** в FIFO сообщений; доставка в pending permission ask по wire `requestId` (см. Permission ask).
 6. Сбой outbound на стриме — лог; push job при исключении — следующий job всё же берётся.
 
 Проверка вручную: поднять бота и раннер (Node с `await using`, см. адаптер README), seed места (`npm run seed -w @sherpa/runner`), написать в seed-Place — ответ OpenCode; в неизвестный Place — «вне реестра» с id.
@@ -135,5 +139,5 @@ npm run dev:runner
 - `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
 - `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
-- `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, sessionPort, send })` → `{ handleInbound }`.
+- `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, loadWorkdirRights, registryPath, sessionPort, send })` → `{ handleInbound }`.
 - `classifyOutboundOutcome` — сверка исхода с командой.

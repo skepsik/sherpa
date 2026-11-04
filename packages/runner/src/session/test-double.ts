@@ -2,6 +2,7 @@ import type {
   OpenSessionDouble,
   SessionDoubleCall,
   SessionEvent,
+  SessionPermissionDecision,
   SessionResumeInput,
   SessionStartInput,
   SessionTestDouble,
@@ -31,6 +32,10 @@ export function createSessionTestDouble(
   function openSession(sessionId: string): OpenSessionDouble {
     const listeners = new Set<(event: SessionEvent) => void>();
     const pendingTexts: string[] = [];
+    const pendingAsks = new Map<
+      string,
+      (decision: SessionPermissionDecision) => void
+    >();
     let alive = true;
     let turnActive = false;
     let endScheduled = false;
@@ -38,6 +43,13 @@ export function createSessionTestDouble(
 
     function emit(event: SessionEvent) {
       for (const listener of listeners) listener(event);
+    }
+
+    function rejectPendingAsks() {
+      for (const resolve of pendingAsks.values()) {
+        resolve('reject');
+      }
+      pendingAsks.clear();
     }
 
     function scheduleTurnEnd() {
@@ -61,6 +73,31 @@ export function createSessionTestDouble(
         calls.push({ sessionId, type: 'abort' });
         session.kill();
       },
+      async answerPermission(input) {
+        calls.push({
+          decision: input.decision,
+          requestId: input.requestId,
+          sessionId,
+          type: 'answer_permission',
+        });
+        const resolve = pendingAsks.get(input.requestId);
+        if (resolve === undefined) return;
+        pendingAsks.delete(input.requestId);
+        resolve(input.decision);
+      },
+      emitPermissionAsk(input) {
+        return new Promise<SessionPermissionDecision>((resolve) => {
+          const prev = pendingAsks.get(input.requestId);
+          if (prev !== undefined) prev('reject');
+          pendingAsks.set(input.requestId, resolve);
+          emit({
+            action: input.action,
+            requestId: input.requestId,
+            resource: input.resource,
+            type: 'permission_ask',
+          });
+        });
+      },
       isAlive() {
         return alive;
       },
@@ -69,6 +106,7 @@ export function createSessionTestDouble(
         alive = false;
         turnActive = false;
         pendingTexts.length = 0;
+        rejectPendingAsks();
         emit({ type: 'closed' });
       },
       pushes,

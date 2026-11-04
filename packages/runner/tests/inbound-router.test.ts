@@ -1,19 +1,31 @@
 import type { OutboundCommand, OutboundResult } from '@sherpa/contract';
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, it } from 'node:test';
 
 import type { ChannelSendOutcome } from '../src/types';
+import type { WorkdirRights } from '../src/types/registry';
 import type { SessionTestDouble } from '../src/types/session';
 
 import {
   buildOutsideRegistryText,
   createInboundRouter,
-  STUB_ACCEPTED_TEXT,
 } from '../src/inbound-router';
 import { createSessionTestDouble } from '../src/session';
+import { listPermissionButtons } from '../src/session/permission-ask';
 
 void describe('inbound router', () => {
+  const temps: string[] = [];
+
+  afterEach(() => {
+    for (const dir of temps.splice(0)) {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   void it('seed-место: message → start + push; в Place эхо double, не stub', async () => {
     const port = createSessionTestDouble();
     const sessionIds = new Map<string, string>();
@@ -29,7 +41,6 @@ void describe('inbound router', () => {
     });
     await settle();
 
-    assert.equal(countStubAccepted(sent, 'place-a'), 0);
     assert.ok(
       sent.some((c) => c.type === 'send_message' && c.text === 'echo:привет'),
     );
@@ -203,7 +214,7 @@ void describe('inbound router', () => {
     assert.equal(sessionIds.get('place-a'), 'double-1');
   });
 
-  void it('question_answer при занятом ходе — ack без ожидания FIFO', async () => {
+  void it('question_answer при занятом ходе — без FIFO; без pending — drop', async () => {
     const port = createSessionTestDouble();
     const gate = createGate();
     const { router, sent } = makeHarness({
@@ -226,34 +237,408 @@ void describe('inbound router', () => {
     });
     await settle();
 
+    const before = sent.length;
     await router.handleInbound({
       event: {
-        data: 'yes',
+        data: 'allow',
         place: 'place-a',
-        requestId: 'req-1',
+        requestId: 'orphan-req',
         type: 'question_answer',
       },
       eventId: 'qa1',
     });
 
-    assert.equal(
-      countStubAccepted(sent, 'place-a'),
-      1,
-      'ack question_answer ушёл, пока message ход на busy/gate',
-    );
+    assert.equal(sent.length, before, 'без pending — нет outbound');
     assert.ok(
       !sent.some((c) => c.type === 'set_status' && c.status === 'busy'),
       'busy ещё не прошёл beforeSend',
+    );
+    assert.equal(
+      port.calls.filter((c) => c.type === 'answer_permission').length,
+      0,
     );
 
     gate.release();
     await settle();
 
-    assert.equal(countStubAccepted(sent, 'place-a'), 1);
     assert.ok(
       sent.some((c) => c.type === 'send_message' && c.text === 'echo:long'),
     );
     assert.ok(sent.some((c) => c.type === 'set_status' && c.status === 'busy'));
+  });
+
+  void it('pending ask + занятый ход: question_answer → answerPermission без FIFO', async () => {
+    const port = createSessionTestDouble();
+    const gate = createGate();
+    let busyHolds = 0;
+    const { router, sent } = makeHarness({
+      beforeSend: async (command) => {
+        if (
+          command.type === 'set_status' &&
+          command.status === 'busy' &&
+          command.place === 'place-a'
+        ) {
+          busyHolds += 1;
+          if (busyHolds === 2) await gate.wait;
+        }
+      },
+      places: { 'place-a': '/tmp/proj' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'open', type: 'message' },
+      eventId: 'm-open',
+    });
+    await settle();
+
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'edit',
+      requestId: 'harness-busy',
+      resource: '/tmp/proj/x',
+    });
+    await settle();
+    assert.ok(sent.some((c) => c.type === 'send_question'));
+
+    void router.handleInbound({
+      event: { place: 'place-a', text: 'busy-msg', type: 'message' },
+      eventId: 'm-busy',
+    });
+    await settle();
+    assert.equal(busyHolds, 2, 'второй busy на gate');
+
+    await router.handleInbound({
+      event: {
+        data: 'allow',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-busy',
+    });
+
+    assert.equal(await decisionPromise, 'once');
+    assert.ok(
+      port.calls.some(
+        (c) =>
+          c.type === 'answer_permission' &&
+          c.decision === 'once' &&
+          c.requestId === 'harness-busy',
+      ),
+      'answer дошёл, пока message ход на busy/gate',
+    );
+    assert.ok(
+      !sent.some(
+        (c) => c.type === 'send_message' && c.text === 'echo:busy-msg',
+      ),
+      'эхо busy-msg ещё за gate',
+    );
+
+    gate.release();
+    await settle();
+    assert.ok(
+      sent.some((c) => c.type === 'send_message' && c.text === 'echo:busy-msg'),
+    );
+  });
+
+  void it('question_answer с чужим place — pending не снимает', async () => {
+    const port = createSessionTestDouble();
+    const { router, sent } = makeHarness({
+      places: { 'place-a': '/tmp/a', 'place-b': '/tmp/b' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'go', type: 'message' },
+      eventId: 'm1',
+    });
+    await settle();
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'edit',
+      requestId: 'harness-place',
+      resource: '/tmp/a/x',
+    });
+    await settle();
+
+    await router.handleInbound({
+      event: {
+        data: 'allow',
+        place: 'place-b',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-wrong-place',
+    });
+    await settle();
+
+    assert.equal(
+      port.calls.filter((c) => c.type === 'answer_permission').length,
+      0,
+    );
+    assert.ok(!sent.some((c) => c.type === 'resolve_question'));
+
+    await router.handleInbound({
+      event: {
+        data: 'deny',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-right-place',
+    });
+    await settle();
+    assert.equal(await decisionPromise, 'reject');
+  });
+
+  void it('ask → send_question allow/deny/always; answer allow → once + resolve', async () => {
+    const port = createSessionTestDouble();
+    const { router, sent } = makeHarness({
+      places: { 'place-a': '/tmp/proj' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'go', type: 'message' },
+      eventId: 'm1',
+    });
+    await settle();
+
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'external_directory',
+      requestId: 'harness-1',
+      resource: '/outside/path',
+    });
+    await settle();
+
+    const question = sent.find((c) => c.type === 'send_question');
+    assert.ok(question);
+    if (question?.type !== 'send_question') return;
+    assert.deepEqual(
+      question.buttons.map((b) => b.data),
+      listPermissionButtons().map((b) => b.data),
+    );
+    assert.equal(question.requestId, 'p1');
+
+    await router.handleInbound({
+      event: {
+        data: 'allow',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-allow',
+    });
+    await settle();
+
+    assert.equal(await decisionPromise, 'once');
+    assert.ok(
+      port.calls.some(
+        (c) =>
+          c.type === 'answer_permission' &&
+          c.decision === 'once' &&
+          c.requestId === 'harness-1',
+      ),
+    );
+    assert.ok(
+      sent.some(
+        (c) =>
+          c.type === 'resolve_question' &&
+          c.messageId === 'm1' &&
+          c.text === 'Разрешено.',
+      ),
+    );
+  });
+
+  void it('question_answer deny → reject; silent allow нет', async () => {
+    const port = createSessionTestDouble();
+    const { router, sent } = makeHarness({
+      places: { 'place-a': '/tmp/proj' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'go', type: 'message' },
+      eventId: 'm1',
+    });
+    await settle();
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'edit',
+      requestId: 'harness-deny',
+      resource: '/tmp/proj/file.txt',
+    });
+    await settle();
+
+    await router.handleInbound({
+      event: {
+        data: 'deny',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-deny',
+    });
+    await settle();
+
+    assert.equal(await decisionPromise, 'reject');
+    assert.ok(
+      sent.some(
+        (c) => c.type === 'resolve_question' && c.text === 'Отклонено.',
+      ),
+    );
+  });
+
+  void it('allow на путь под deny → в харнесс всё равно reject', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'sherpa-perm-'));
+    temps.push(cwd);
+    const secret = join(cwd, 'secret.txt');
+    writeFileSync(secret, 'no');
+
+    const port = createSessionTestDouble();
+    const { router, sent } = makeHarness({
+      loadWorkdirRights: () =>
+        ({
+          cwd,
+          denies: [{ cwd, pattern: 'read:secret.txt' }],
+          denyGlobals: [],
+          grants: [],
+        }) satisfies WorkdirRights,
+      places: { 'place-a': cwd },
+      registryPath: ':memory:',
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'go', type: 'message' },
+      eventId: 'm1',
+    });
+    await settle();
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'read',
+      requestId: 'harness-blocked',
+      resource: secret,
+    });
+    await settle();
+
+    await router.handleInbound({
+      event: {
+        data: 'allow',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-blocked',
+    });
+    await settle();
+
+    assert.equal(await decisionPromise, 'reject');
+    assert.ok(
+      sent.some(
+        (c) => c.type === 'resolve_question' && c.text === 'Отклонено.',
+      ),
+    );
+  });
+
+  void it('allow на путь под registry ban → reject', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'sherpa-reg-'));
+    temps.push(cwd);
+    const registryFile = join(cwd, 'registry.sqlite');
+    writeFileSync(registryFile, '');
+
+    const port = createSessionTestDouble();
+    const { router } = makeHarness({
+      places: { 'place-a': cwd },
+      registryPath: registryFile,
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'go', type: 'message' },
+      eventId: 'm1',
+    });
+    await settle();
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'read',
+      requestId: 'harness-reg',
+      resource: registryFile,
+    });
+    await settle();
+
+    await router.handleInbound({
+      event: {
+        data: 'always',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-reg',
+    });
+    await settle();
+
+    assert.equal(await decisionPromise, 'reject');
+  });
+
+  void it('teardown хода снимает pending; поздний answer — drop', async () => {
+    const port = createSessionTestDouble();
+    const { router, sent } = makeHarness({
+      places: { 'place-a': '/tmp/proj' },
+      sessionPort: port,
+    });
+
+    await router.handleInbound({
+      event: { place: 'place-a', text: 'go', type: 'message' },
+      eventId: 'm1',
+    });
+    await settle();
+    const session = port.opened[0];
+    assert.ok(session);
+    const decisionPromise = session.emitPermissionAsk({
+      action: 'edit',
+      requestId: 'harness-tear',
+      resource: '/tmp/proj/x',
+    });
+    await settle();
+
+    assert.ok(sent.some((c) => c.type === 'send_question'));
+    session.kill();
+    await settle();
+
+    assert.equal(await decisionPromise, 'reject');
+    assert.ok(
+      sent.some(
+        (c) => c.type === 'resolve_question' && c.text === 'Отклонено.',
+      ),
+    );
+
+    const answersBefore = port.calls.filter(
+      (c) => c.type === 'answer_permission',
+    ).length;
+    await router.handleInbound({
+      event: {
+        data: 'allow',
+        place: 'place-a',
+        requestId: 'p1',
+        type: 'question_answer',
+      },
+      eventId: 'qa-late',
+    });
+    await settle();
+    assert.equal(
+      port.calls.filter((c) => c.type === 'answer_permission').length,
+      answersBefore,
+      'поздний answer не доходит до харнесса повторно',
+    );
   });
 
   void it('сбой outbound на эхо — следующий job всё же обрабатывается', async () => {
@@ -359,15 +744,6 @@ void describe('inbound router', () => {
   });
 });
 
-function countStubAccepted(sent: OutboundCommand[], place: string) {
-  return sent.filter(
-    (c) =>
-      c.type === 'send_message' &&
-      c.place === place &&
-      c.text === STUB_ACCEPTED_TEXT,
-  ).length;
-}
-
 function createGate() {
   let release!: () => void;
   const wait = new Promise<void>((resolve) => {
@@ -382,7 +758,9 @@ function delay(ms: number) {
 
 function makeHarness(options: {
   beforeSend?: (command: OutboundCommand) => Promise<void>;
+  loadWorkdirRights?: (cwd: string) => WorkdirRights;
   places: Record<string, string>;
+  registryPath?: string;
   sendOutcome?: (command: OutboundCommand) => ChannelSendOutcome;
   sessionIds?: Map<string, string>;
   sessionPort: SessionTestDouble;
@@ -401,6 +779,15 @@ function makeHarness(options: {
       }
       return sessionIds.get(key) ?? '';
     },
+    loadWorkdirRights:
+      options.loadWorkdirRights ??
+      ((cwd) => ({
+        cwd,
+        denies: [],
+        denyGlobals: [],
+        grants: [],
+      })),
+    registryPath: options.registryPath ?? ':memory:',
     send: async (command) => {
       await options.beforeSend?.(command);
       sent.push(command);
