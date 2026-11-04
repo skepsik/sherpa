@@ -29,7 +29,7 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar; `foreignClosures` для вложенного `none` под чужим корнем). Реальный путь — walk как open(2) (follow symlink по сегментам, `..` после follow). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
 
-OpenCode: `expressLaunchRights(launchRights)` — снимок → `permissions` для запуска (без живой сессии). Живой старт сессии — `issue-5-2`; ask UI и `append_file` — не здесь. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
+OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Busy push — steer; mid-run after/break — 5-4. Permission ask → событие + лог; UI — 5-3. Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
 
 ## Порт сессии
 
@@ -37,7 +37,7 @@ OpenCode: `expressLaunchRights(launchRights)` — снимок → `permissions`
 
 Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем push. Resume-fail → сброс `session_id` + cold start. `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
 
-Пока нет OpenCode (`issue-5-2`), в процессе раннера — **test double** (`createSessionTestDouble`): фиксирует вызовы, эхо `echo:<text>` в Place. Permission ask UI — `issue-5-3`.
+В процессе раннера — OpenCode-порт; для тестов без модели — fake host (`tests/opencode-fake-host.ts`) или прежний `createSessionTestDouble`.
 
 ### Seed одного каталога и места
 
@@ -114,7 +114,7 @@ Default таймаут ожидания исхода — 60 с.
 5. `question_answer` — **не** в FIFO сообщений; stub-ack «Принято.» по отдельному пути (permission UI — 5-3).
 6. Сбой outbound на стриме — лог; push job при исключении — следующий job всё же берётся.
 
-Проверка вручную: поднять бота и раннер, seed места (`npm run seed -w @sherpa/runner`), написать в seed-Place — эхо double (`echo:…`); в неизвестный Place — ответ «вне реестра» с id.
+Проверка вручную: поднять бота и раннер (Node с `await using`, см. адаптер README), seed места (`npm run seed -w @sherpa/runner`), написать в seed-Place — ответ OpenCode; в неизвестный Place — «вне реестра» с id.
 
 ## Запуск
 
@@ -132,8 +132,8 @@ npm run dev:runner
 - `normalizeWorkdirPath` — нормализация `cwd` / `grant.path` перед записью.
 - `validateDenyPattern` — fail-fast валидация диалекта deny.
 - `resolvePathAccess` / `buildLaunchRights` / `RightsConfigError` — резолв вердикта пути и плоского снимка запуска.
-- `expressLaunchRights` / `OpenCodeExpressError` — выражение снимка в permissions OpenCode (`src/adapters/opencode`).
-- `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — порт (double) и слот места.
+- `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
+- `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, sessionPort, send })` → `{ handleInbound }`.
 - `classifyOutboundOutcome` — сверка исхода с командой.
