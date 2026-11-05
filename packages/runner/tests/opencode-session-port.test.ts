@@ -14,7 +14,7 @@ import {
 } from '../src/adapters/opencode';
 import { openRegistry } from '../src/registry';
 import { buildLaunchRights } from '../src/rights';
-import { createPlaceSessionSlots, SessionResumeError } from '../src/session';
+import { createPlaceSessionSlots, SessionGoneError } from '../src/session';
 import { createOpenCodeFakeHost } from './opencode-fake-host';
 
 void describe('opencode session port (fake host)', () => {
@@ -167,7 +167,7 @@ void describe('opencode session port (fake host)', () => {
     registry.close();
   });
 
-  void it('resume-fail → SessionResumeError; слот сбрасывает id и cold start', async () => {
+  void it('resume-fail → SessionGoneError; слот сбрасывает id и cold start', async () => {
     const { cwd, placeKey, registry, registryPath } = setupWorkdir(temps);
     const host = createOpenCodeFakeHost();
     const staleId = 'ses_fake_stale';
@@ -183,7 +183,7 @@ void describe('opencode session port (fake host)', () => {
 
     await assert.rejects(
       () => port.resume({ cwd, sessionId: staleId }),
-      (error: unknown) => error instanceof SessionResumeError,
+      (error: unknown) => error instanceof SessionGoneError,
     );
 
     const slots = createPlaceSessionSlots({

@@ -10,7 +10,7 @@ import type {
   SessionTestDouble,
 } from '../types/session';
 
-import { SessionResumeError } from './resume-error';
+import { SessionGoneError } from './gone-error';
 
 type DoubleOptions = {
   /**
@@ -136,7 +136,7 @@ export function createSessionTestDouble(
         }
         if (pushFailIds.has(sessionId)) {
           pushFailIds.delete(sessionId);
-          throw new SessionResumeError(sessionId);
+          throw new SessionGoneError(sessionId);
         }
         calls.push({ delivery, sessionId, text, type: 'push' });
         pushes.push({ delivery, text });
@@ -183,7 +183,7 @@ export function createSessionTestDouble(
       }
       if (resumeFailIds.has(input.sessionId)) {
         resumeFailIds.delete(input.sessionId);
-        throw new SessionResumeError(input.sessionId);
+        throw new SessionGoneError(input.sessionId);
       }
       return openSession(input.sessionId);
     },
