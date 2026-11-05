@@ -5,6 +5,11 @@ export {
   listMergedDenyPatterns,
 } from './deny-match';
 export {
+  EnsureDenyGlobalError,
+  ensureDenyGlobalMvp,
+  listMvpDenyGlobalPatterns,
+} from './ensure-deny-global';
+export {
   isPathEqualOrUnder,
   normalizeLexicalPath,
   resolveTargetPaths,

@@ -4,6 +4,8 @@ import type {
   PlaceSessionSlotsDeps,
 } from '../types/session';
 
+import { EnsureDenyGlobalError } from '../rights';
+import { SessionColdStartError } from './cold-start-error';
 import { SessionResumeError } from './resume-error';
 
 type LiveHandle = {
@@ -44,6 +46,19 @@ export function createPlaceSessionSlots(
     key: string,
     cwd: string,
   ): Promise<LiveHandle> {
+    try {
+      return await openLiveHandle(key, cwd);
+    } catch (error: unknown) {
+      if (error instanceof EnsureDenyGlobalError) throw error;
+      if (error instanceof SessionColdStartError) throw error;
+      throw new SessionColdStartError(
+        error instanceof Error ? error.message : String(error),
+        error,
+      );
+    }
+  }
+
+  async function openLiveHandle(key: string, cwd: string): Promise<LiveHandle> {
     const slot = getOrCreateSlot(key);
     if (slot.live !== null && slot.live.generation === slot.generation) {
       return slot.live;

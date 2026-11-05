@@ -1,3 +1,4 @@
+export { SessionColdStartError } from './cold-start-error';
 export {
   buildPermissionQuestionText,
   buildPermissionResolveText,
