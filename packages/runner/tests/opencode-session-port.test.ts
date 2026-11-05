@@ -14,7 +14,12 @@ import {
 } from '../src/adapters/opencode';
 import { openRegistry } from '../src/registry';
 import { buildLaunchRights } from '../src/rights';
-import { createPlaceSessionSlots, SessionResumeError } from '../src/session';
+import {
+  createPlaceSessionSlots,
+  DIARY_FIXATION_NUDGE_TEXT,
+  DIARY_READ_NUDGE_TEXT,
+  SessionResumeError,
+} from '../src/session';
 import { createOpenCodeFakeHost } from './opencode-fake-host';
 
 void describe('opencode session port (fake host)', () => {
@@ -31,6 +36,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -74,6 +80,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -93,8 +100,12 @@ void describe('opencode session port (fake host)', () => {
       text: 'job',
     });
     await waitFor(
-      () => outbound.some((event) => event.type === 'turn_ended'),
-      1000,
+      () =>
+        outbound.some(
+          (event) =>
+            event.type === 'assistant_text' && event.text === 'mock:job',
+        ),
+      2000,
     );
 
     assert.ok(registry.getPlaceSessionId(placeKey).startsWith('ses_fake_'));
@@ -103,7 +114,34 @@ void describe('opencode session port (fake host)', () => {
         (event) => event.type === 'assistant_text' && event.text === 'mock:job',
       ),
     );
-
+    assert.deepEqual(host.prompts.map((p) => p.text).slice(0, 2), [
+      DIARY_READ_NUDGE_TEXT,
+      'job',
+    ]);
+    const diaryStarted = outbound.find(
+      (event) => event.type === 'turn_started' && event.nudgeOnly === true,
+    );
+    const diaryText = outbound.find(
+      (event) =>
+        event.type === 'assistant_text' &&
+        event.text === `mock:${DIARY_READ_NUDGE_TEXT}`,
+    );
+    assert.ok(diaryStarted, 'diary turn_started nudgeOnly');
+    assert.equal(
+      diaryText?.type === 'assistant_text' && diaryText.nudgeOnly,
+      true,
+    );
+    const jobText = outbound.find(
+      (event) => event.type === 'assistant_text' && event.text === 'mock:job',
+    );
+    assert.equal(
+      jobText?.type === 'assistant_text' && jobText.nudgeOnly,
+      false,
+    );
+    await waitFor(
+      () => host.prompts.some((p) => p.text === DIARY_FIXATION_NUDGE_TEXT),
+      2000,
+    );
     registry.close();
   });
 
@@ -113,6 +151,7 @@ void describe('opencode session port (fake host)', () => {
     let loadCalls = 0;
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => {
         loadCalls += 1;
         return registry.loadWorkdirRights(path);
@@ -122,13 +161,14 @@ void describe('opencode session port (fake host)', () => {
 
     const started = await port.start({ cwd });
     assert.equal(host.creates.length, 1);
-    assert.equal(loadCalls, 1);
+    // ensure (existing) + buildPermissions
+    assert.equal(loadCalls, 2);
     const sessionId = started.sessionId;
 
     const resumed = await port.resume({ cwd, sessionId });
     assert.equal(resumed.sessionId, sessionId);
     assert.equal(host.creates.length, 1);
-    assert.equal(loadCalls, 1);
+    assert.equal(loadCalls, 2);
 
     const events: SessionEvent[] = [];
     resumed.subscribe((event) => events.push(event));
@@ -156,6 +196,7 @@ void describe('opencode session port (fake host)', () => {
 
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -206,6 +247,22 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => {
+        // Две отдельные БД в тесте — ensure пишет в обе (UNIQUE → no-op).
+        for (const reg of [a.registry, b.registry]) {
+          try {
+            reg.insertDenyGlobal(input);
+          } catch (error: unknown) {
+            if (
+              !(error instanceof Error) ||
+              !/UNIQUE constraint failed/i.test(error.message)
+            ) {
+              throw error;
+            }
+          }
+        }
+        return { pattern: input.pattern };
+      },
       loadWorkdirRights: (path) => {
         if (path === a.cwd) return a.registry.loadWorkdirRights(path);
         if (path === b.cwd) return b.registry.loadWorkdirRights(path);
@@ -263,6 +320,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -287,6 +345,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -317,6 +376,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -349,6 +409,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -400,6 +461,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -427,6 +489,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -465,14 +528,15 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
 
+    await port.start({ cwd });
     const expected = expressLaunchRights(
       buildLaunchRights(registry.loadWorkdirRights(cwd), { registryPath }),
     );
-    await port.start({ cwd });
     assert.deepEqual(host.creates[0]?.permissions, expected.permissions);
 
     registry.close();
@@ -483,6 +547,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -504,6 +569,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -524,6 +590,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });
@@ -560,6 +627,7 @@ void describe('opencode session port (fake host)', () => {
     const host = createOpenCodeFakeHost();
     const port = createOpenCodeSessionPort({
       createHost: async () => host,
+      insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
       loadWorkdirRights: (path) => registry.loadWorkdirRights(path),
       registryPath,
     });

@@ -1,4 +1,4 @@
-import type { GrantLevel } from './registry';
+import type { DenyGlobalInput, DenyGlobalRecord, GrantLevel } from './registry';
 
 /** Эффект шаблона deny (префикс read:/write:). */
 export type DenyEffect = 'read' | 'write';
@@ -7,6 +7,13 @@ export type DenyEffect = 'read' | 'write';
 export type DenyEffects = {
   readDenied: boolean;
   writeDenied: boolean;
+};
+
+/** Зависимости ensure набора MVP в `deny_global`. */
+export type EnsureDenyGlobalDeps = {
+  insertDenyGlobal: (input: DenyGlobalInput) => DenyGlobalRecord;
+  /** Текущие pattern из `deny_global` (например из loadWorkdirRights). */
+  loadExistingPatterns: () => readonly string[];
 };
 
 /**

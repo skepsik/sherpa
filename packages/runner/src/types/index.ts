@@ -63,6 +63,7 @@ export type {
 export type {
   DenyEffect,
   DenyEffects,
+  EnsureDenyGlobalDeps,
   LaunchRights,
   LaunchRoot,
   ParsedDeny,

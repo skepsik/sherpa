@@ -16,7 +16,7 @@ import type {
   SessionStartInput,
 } from '../../types/session';
 
-import { buildLaunchRights } from '../../rights';
+import { buildLaunchRights, ensureDenyGlobalMvp } from '../../rights';
 import { SessionResumeError } from '../../session/resume-error';
 import { listTextChunks } from './chunk-text';
 import { expressLaunchRights } from './express-launch-rights';
@@ -28,7 +28,8 @@ import { expressLaunchRights } from './express-launch-rights';
 export function createOpenCodeSessionPort(
   deps: OpenCodeSessionPortDeps,
 ): SessionPort {
-  const { createHost, loadWorkdirRights, registryPath } = deps;
+  const { createHost, insertDenyGlobal, loadWorkdirRights, registryPath } =
+    deps;
 
   let hostPromise: null | Promise<OpenCodeHost> = null;
   let pumpStarted = false;
@@ -249,6 +250,11 @@ export function createOpenCodeSessionPort(
       }
     },
     async start(input: SessionStartInput) {
+      ensureDenyGlobalMvp({
+        insertDenyGlobal,
+        loadExistingPatterns: () =>
+          loadWorkdirRights(input.cwd).denyGlobals.map((row) => row.pattern),
+      });
       const permissions = buildPermissionsForCwd(input.cwd);
       const host = await ensureHost();
       const session = await host.createSession({

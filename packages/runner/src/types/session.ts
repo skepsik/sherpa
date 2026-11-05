@@ -76,16 +76,21 @@ export type SessionDoubleCall =
 
 export type SessionEvent =
   | {
+      /** Ход только с runner-nudge — слот проставляет при forward в Place. */
+      nudgeOnly?: boolean;
+      text: string;
+      type: 'assistant_text';
+    }
+  | {
       action: string;
       requestId: string;
       resource: string;
       type: 'permission_ask';
     }
   | { message: string; type: 'error' }
-  | { text: string; type: 'assistant_text' }
-  | { type: 'closed' }
-  | { type: 'turn_ended' }
-  | { type: 'turn_started' };
+  | { nudgeOnly?: boolean; type: 'turn_ended' }
+  | { nudgeOnly?: boolean; type: 'turn_started' }
+  | { type: 'closed' };
 
 /** Решение на permission ask: once / always / reject. */
 export type SessionPermissionDecision = 'always' | 'once' | 'reject';

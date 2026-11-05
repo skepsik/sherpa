@@ -137,8 +137,11 @@ function closesEntireDirectory(
   dirAbs: string,
   roots: readonly string[],
 ) {
-  const probeA = `${dirAbs}/.__sherpa_probe_a__`;
-  const probeB = `${dirAbs}/.__sherpa_probe_b__`;
+  // `/` + `/probe` → `//probe`; ignore требует path.relative без ведущего `/`.
+  const probeA =
+    dirAbs === '/' ? '/.__sherpa_probe_a__' : `${dirAbs}/.__sherpa_probe_a__`;
+  const probeB =
+    dirAbs === '/' ? '/.__sherpa_probe_b__' : `${dirAbs}/.__sherpa_probe_b__`;
   return (
     isGitignoreMatch(gitignoreBody, probeA, roots) &&
     isGitignoreMatch(gitignoreBody, probeB, roots)
@@ -146,6 +149,8 @@ function closesEntireDirectory(
 }
 
 function ignoresPath(pattern: string, pathname: string) {
+  // ignore бросает на пустом path (предок `/` → slice → '').
+  if (pathname === '') return false;
   const ig = ignore().add(pattern);
   if (ig.ignores(pathname)) {
     return true;
