@@ -68,7 +68,44 @@ void describe('place session slots', () => {
     assert.equal(pushes[0]?.type === 'push' && pushes[0].text, 'работа');
   });
 
-  void it('push SessionResumeError (сессия удалена) → cold start и повторный push', async () => {
+  void it('resume SessionGoneError → сброс id, cold start, user-текст', async () => {
+    const port = createSessionTestDouble();
+    port.failResumeFor('gone');
+    const sessionIds = new Map([['place-a', 'gone']]);
+
+    const slots = createPlaceSessionSlots({
+      getPlaceSessionId: (key) => sessionIds.get(key) ?? '',
+      onEvent: () => undefined,
+      sessionPort: port,
+      setPlaceSessionId: (key, id) => {
+        sessionIds.set(key, id);
+      },
+    });
+
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'после-gone',
+    });
+    await settle();
+
+    const sequence = port.calls
+      .filter(
+        (c) => c.type === 'resume' || c.type === 'start' || c.type === 'push',
+      )
+      .map((c) => {
+        if (c.type === 'resume') return `resume:${c.sessionId}`;
+        if (c.type === 'start') return 'start';
+        return c.text;
+      });
+
+    assert.deepEqual(sequence, ['resume:gone', 'start', 'после-gone']);
+    assert.notEqual(sessionIds.get('place-a'), 'gone');
+    assert.notEqual(sessionIds.get('place-a'), '');
+  });
+
+  void it('push SessionGoneError (сессия удалена) → cold start и повторный push', async () => {
     const port = createSessionTestDouble();
     port.failPushFor('gone');
     const sessionIds = new Map([['place-a', 'gone']]);
@@ -105,7 +142,7 @@ void describe('place session slots', () => {
     assert.notEqual(sessionIds.get('place-a'), '');
   });
 
-  void it('resume ≠ SessionResumeError — session_id не сбрасывается, start нет', async () => {
+  void it('resume ≠ SessionGoneError — session_id не сбрасывается, start нет', async () => {
     const port = createSessionTestDouble();
     port.crashResumeFor('keep-me');
     const sessionIds = new Map([['place-a', 'keep-me']]);

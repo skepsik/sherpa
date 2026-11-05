@@ -1,4 +1,5 @@
 export { SessionColdStartError } from './cold-start-error';
+export { SessionGoneError } from './gone-error';
 export {
   buildPermissionQuestionText,
   buildPermissionResolveText,
@@ -11,5 +12,4 @@ export {
   PERMISSION_CALLBACK_BUDGET_BYTES,
 } from './permission-ask';
 export { createPlaceSessionSlots } from './place-slots';
-export { SessionResumeError } from './resume-error';
 export { createSessionTestDouble } from './test-double';

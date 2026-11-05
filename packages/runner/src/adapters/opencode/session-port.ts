@@ -17,7 +17,7 @@ import type {
 } from '../../types/session';
 
 import { buildLaunchRights, ensureDenyGlobalMvp } from '../../rights';
-import { SessionResumeError } from '../../session/resume-error';
+import { SessionGoneError } from '../../session/gone-error';
 import { listTextChunks } from './chunk-text';
 import { expressLaunchRights } from './express-launch-rights';
 
@@ -226,7 +226,7 @@ export function createOpenCodeSessionPort(
           });
         } catch (error: unknown) {
           if (isSessionNotFoundError(error)) {
-            throw new SessionResumeError(sessionId, error);
+            throw new SessionGoneError(sessionId, error);
           }
           throw error;
         }
@@ -253,7 +253,7 @@ export function createOpenCodeSessionPort(
         const session = await host.getSession(input.sessionId);
         return attachSession(session.id);
       } catch (error: unknown) {
-        throw new SessionResumeError(input.sessionId, error);
+        throw new SessionGoneError(input.sessionId, error);
       }
     },
     async start(input: SessionStartInput) {
@@ -282,7 +282,7 @@ function formatHostError(error: unknown) {
   return 'ошибка хода OpenCode';
 }
 
-/** Удалённая/пропавшая сессия OpenCode — слот сбросит id и cold start. */
+/** Вендорный SessionNotFoundError → SessionGoneError на границе порта. */
 function isSessionNotFoundError(error: unknown): boolean {
   if (error === null || typeof error !== 'object') return false;
   const tagged = error as { _tag?: unknown; name?: unknown };

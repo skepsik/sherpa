@@ -6,7 +6,7 @@ import type {
 
 import { EnsureDenyGlobalError } from '../rights';
 import { SessionColdStartError } from './cold-start-error';
-import { SessionResumeError } from './resume-error';
+import { SessionGoneError } from './gone-error';
 
 type LiveHandle = {
   generation: number;
@@ -73,7 +73,7 @@ export function createPlaceSessionSlots(
       try {
         session = await sessionPort.resume({ cwd, sessionId: storedId });
       } catch (error: unknown) {
-        if (!(error instanceof SessionResumeError)) throw error;
+        if (!(error instanceof SessionGoneError)) throw error;
         setPlaceSessionId(key, '');
         session = await sessionPort.start({ cwd });
       }
@@ -180,7 +180,7 @@ export function createPlaceSessionSlots(
     try {
       await handle.session.pushMessage(input.text, input.delivery);
     } catch (error: unknown) {
-      if (retried || !(error instanceof SessionResumeError)) throw error;
+      if (retried || !(error instanceof SessionGoneError)) throw error;
       if (slot.live === handle) markDead(slot, handle);
       setPlaceSessionId(input.key, '');
       await pushWithStaleSessionRetry(input, true);

@@ -46,7 +46,7 @@ Conformance suite (матрица allow/deny/ask без диалекта хар�
 
 Харнесс → событие `permission_ask` (action + resource + requestId харнесса) → раннер шлёт `send_question` в Place: кнопки с `data` из алфавита **`allow` | `deny` | `always`** (текст смысла не в `data`). На проводе — короткий wire `requestId` (`pN`); бюджет `requestId`+`data` ≤48 байт UTF-8 на кнопку. Ответ `question_answer` → маппинг в решение порта: `allow`→`once`, `always`→`always`, `deny`→`reject` → `answerPermission` → харнесс; UI закрывается `resolve_question`. `deny` / `deny_global` / константный запрет реестра / явный `grant none` / shell подтверждением не снимаются (`resolvePathAccess` + сверка): даже на `allow`/`always` в харнесс уходит `reject`. Нет pending (рестарт / повтор / чужой id) — drop + log, без stub-ack. Teardown (closed / error / abort) снимает pending, best-effort `resolve_question`, поздний ответ — как «нет pending». Pending ask — память процесса; после рестарта раннера из БД не восстанавливается.
 
-Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем сразу user-текст из Place. Resume-fail и `SessionNotFound` на push → сброс `session_id` + cold start (+ один повторный push при not-found на push). Кейсы — `design/session.md`. Раннер не добавляет во вход харнесса текстов сверх входящего чата. Каждый `assistant_text` хода зеркалируется в Place (`send_message`). `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
+Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем сразу user-текст из Place. Пустой id, непригодный id (`SessionGoneError` на resume/get или not-found на push) — один исход: сброс `session_id` + cold start (+ один повторный push, если непригодность поймана на push). Live handle не доказывает, что сессия харнесса ещё есть. Кейсы — `design/session.md`. Раннер не добавляет во вход харнесса текстов сверх входящего чата. Каждый `assistant_text` хода зеркалируется в Place (`send_message`). `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
 
 В процессе раннера — OpenCode-порт; для тестов без модели — fake host (`tests/opencode-fake-host.ts`) или прежний `createSessionTestDouble`.
 
@@ -167,7 +167,7 @@ npm run dev:runner
 - `resolvePathAccess` / `buildLaunchRights` / `RightsConfigError` — резолв вердикта пути и плоского снимка запуска.
 - `ensureDenyGlobalMvp` / `listMvpDenyGlobalPatterns` / `EnsureDenyGlobalError` — ensure набора MVP в `deny_global` перед cold `start`.
 - `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
-- `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
+- `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionGoneError` — double порта и слот места.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, loadWorkdirRights, midRunDefaultDelivery, registryPath, sessionPort, send })` → `{ handleInbound }`.
 - `loadMidRunDefaultDelivery` — `SHERPA_MID_RUN_DELIVERY` / дефолт `interject`.
