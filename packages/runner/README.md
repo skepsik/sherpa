@@ -130,6 +130,27 @@ Default таймаут ожидания исхода — 60 с.
 
 Проверка вручную: поднять бота и раннер (Node с `await using`, см. адаптер README), seed места (`npm run seed -w @sherpa/runner`), написать в seed-Place — ответ OpenCode; в неизвестный Place — «вне реестра» с id.
 
+## Агент проекта (эпик 6)
+
+Минимальный продуктовый путь **без привратника**: сообщение из уже привязанного места → агент только в своём `cwd`. Роль `gatekeeper`, направление в чужое место и `create_place` — **эпик 7**; seed и раннер эпика 6 на них не ветвятся.
+
+1. Env бота и раннера: `SHERPA_CHANNEL_URL`, `SHERPA_CHANNEL_SECRET`, у раннера ещё `SHERPA_REGISTRY_PATH` (см. Env выше / корневой `.env.example`).
+2. Seed workdir+place **без** роли `gatekeeper`:
+
+```bash
+cp .env.example .env
+npm run seed -w @sherpa/runner -- \
+  --cwd /absolute/path/to/project \
+  --name my-project \
+  --description 'когда сюда' \
+  --place '<opaque-Place>'
+```
+
+3. Поднять бота (канал) и раннер: `npm run dev:bot` / `npm run dev:runner`.
+4. Написать в seed-Place — cold `start` (внутри `ensureDenyGlobalMvp` → права → express) → diary-read nudge → текст пользователя → ответ ассистента в то же Place; `session_id` в `places`. Permission ask — кнопки в то же Place.
+
+Приёмка happy path (fake host, без сети к модели): `npm run test -w @sherpa/runner -- tests/project-agent-acceptance.test.ts`.
+
 ## Запуск
 
 ```bash
