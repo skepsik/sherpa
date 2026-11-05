@@ -45,7 +45,8 @@ void describe('place session slots', () => {
 
   void it('после closed события старого handle (turn_ended) не в onEvent', async () => {
     const controllable = createControllablePort();
-    const sessionIds = new Map([['place-a', '']]);
+    // resume — без cold diary-wait (noop push не эмитит turn_ended)
+    const sessionIds = new Map([['place-a', 'ctrl-pre']]);
     const forwarded: SessionEvent['type'][] = [];
 
     const slots = createPlaceSessionSlots({
@@ -80,7 +81,7 @@ void describe('place session slots', () => {
 
   void it('dropHandle→abort: closed → idle; поздний closed чужого не поверх нового хода', async () => {
     const controllable = createControllablePort();
-    const sessionIds = new Map([['place-a', '']]);
+    const sessionIds = new Map([['place-a', 'ctrl-pre']]);
     const forwarded: SessionEvent['type'][] = [];
 
     const slots = createPlaceSessionSlots({
@@ -152,7 +153,7 @@ void describe('place session slots', () => {
     };
     const forwarded: SessionEvent['type'][] = [];
     const slots = createPlaceSessionSlots({
-      getPlaceSessionId: () => '',
+      getPlaceSessionId: () => 'async-1',
       onEvent: (_key, event) => {
         forwarded.push(event.type);
       },

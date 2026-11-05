@@ -14,7 +14,11 @@ import {
   buildOutsideRegistryText,
   createInboundRouter,
 } from '../src/inbound-router';
-import { createSessionTestDouble } from '../src/session';
+import {
+  createSessionTestDouble,
+  DIARY_FIXATION_NUDGE_TEXT,
+  DIARY_READ_NUDGE_TEXT,
+} from '../src/session';
 import { listPermissionButtons } from '../src/session/permission-ask';
 
 void describe('inbound router', () => {
@@ -53,7 +57,19 @@ void describe('inbound router', () => {
         {
           delivery: 'interject',
           sessionId: 'double-1',
+          text: DIARY_READ_NUDGE_TEXT,
+          type: 'push',
+        },
+        {
+          delivery: 'interject',
+          sessionId: 'double-1',
           text: 'привет',
+          type: 'push',
+        },
+        {
+          delivery: 'interject',
+          sessionId: 'double-1',
+          text: DIARY_FIXATION_NUDGE_TEXT,
           type: 'push',
         },
       ],
@@ -112,7 +128,8 @@ void describe('inbound router', () => {
     await settle();
 
     const pushes = port.calls.filter((c) => c.type === 'push');
-    assert.equal(pushes.length, 2, 'оба push ушли, пока ход на busy/gate');
+    // diary-read (cold) + one + two; fixation ещё после отпускания gate
+    assert.ok(pushes.length >= 3, 'diary + оба user push ушли, пока busy/gate');
     assert.equal(port.opened.length, 1, 'второго handle нет');
     assert.equal(
       sent.filter(
@@ -162,7 +179,8 @@ void describe('inbound router', () => {
 
     const oldSession = port.opened[0];
     assert.ok(oldSession);
-    assert.equal(oldSession.pushes.length, 1);
+    // diary-read уже завершён; user «first» в полёте на gate
+    assert.ok(oldSession.pushes.length >= 2);
     assert.equal(sessionIds.get('place-a'), 'double-1');
 
     oldSession.kill();
@@ -174,13 +192,19 @@ void describe('inbound router', () => {
       'closed mid-turn → idle',
     );
 
+    const pushesBeforeReopen = oldSession.pushes.length;
+
     await router.handleInbound({
       event: { place: 'place-a', text: 'after-kill', type: 'message' },
       eventId: 'e2',
     });
     await settle();
 
-    assert.equal(oldSession.pushes.length, 1, 'в старый handle не писали');
+    assert.equal(
+      oldSession.pushes.length,
+      pushesBeforeReopen,
+      'в старый handle не писали',
+    );
     assert.ok(
       port.calls.some((c) => c.type === 'resume' && c.sessionId === 'double-1'),
     );
@@ -778,8 +802,11 @@ void describe('inbound router', () => {
 
   void it('session_break при активном ходе → interrupt_turn', async () => {
     const port = createSessionTestDouble({ holdTurn: true });
+    // resume — без cold diary-nudge, иначе holdTurn зависает на read-ходе
+    const sessionIds = new Map<string, string>([['place-a', 'held-1']]);
     const { router } = makeHarness({
       places: { 'place-a': '/tmp/a' },
+      sessionIds,
       sessionPort: port,
     });
 
@@ -801,6 +828,20 @@ void describe('inbound router', () => {
       port.calls.some((c) => c.type === 'interrupt_turn'),
       'break → interrupt',
     );
+    // после task turn_ended уходит fixation-nudge (holdTurn — ход жив)
+    assert.ok(
+      port.calls.some(
+        (c) => c.type === 'push' && c.text === DIARY_FIXATION_NUDGE_TEXT,
+      ),
+    );
+    assert.equal(port.opened[0]?.isTurnActive(), true);
+
+    await router.handleInbound({
+      event: { place: 'place-a', type: 'session_break' },
+      eventId: 'brk-3',
+    });
+    await settle();
+
     assert.equal(port.opened[0]?.isTurnActive(), false);
   });
 
