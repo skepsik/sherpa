@@ -4,9 +4,9 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 
 ## Права на старте
 
-`createOpenCodeSessionPort`: на cold `start` — `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в `createSession`. Shell deny в снимке. Shared host на процесс; права Place A не применяются к сессии Place B (отдельный `createSession`).
+`createOpenCodeSessionPort`: на cold `start` — `ensureDenyGlobalMvp` → `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в `createSession`. Ensure пишет недостающие шаблоны MVP в `deny_global` через API реестра; express их не хардкодит. Shell deny в снимке. Shared host на процесс; права Place A не применяются к сессии Place B (отдельный `createSession`).
 
-Чистая функция `expressLaunchRights(LaunchRights)` — без живой сессии (issue-4-3).
+Чистая функция `expressLaunchRights(LaunchRights)` — без живой сессии и без побочной записи в БД (issue-4-3).
 
 ## Сессия и стрим
 

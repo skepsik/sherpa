@@ -1,4 +1,8 @@
-import type { WorkdirRights } from './registry';
+import type {
+  DenyGlobalInput,
+  DenyGlobalRecord,
+  WorkdirRights,
+} from './registry';
 import type { SessionEvent } from './session';
 
 /**
@@ -93,6 +97,7 @@ export type OpenCodePermissionRule = {
 
 export type OpenCodeSessionPortDeps = {
   createHost: () => Promise<OpenCodeHost>;
+  insertDenyGlobal: (input: DenyGlobalInput) => DenyGlobalRecord;
   loadWorkdirRights: (cwd: string) => WorkdirRights;
   registryPath: string;
 };

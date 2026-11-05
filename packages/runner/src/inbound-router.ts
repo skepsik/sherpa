@@ -14,7 +14,8 @@ import type { PlaceSessionSlots, SessionEvent } from './types/session';
 
 import { createEventIdDedup } from './event-dedup';
 import { createPlaceMessageQueues } from './message-queue';
-import { createPlaceSessionSlots } from './session';
+import { EnsureDenyGlobalError } from './rights';
+import { createPlaceSessionSlots, SessionColdStartError } from './session';
 import {
   buildPermissionQuestionText,
   buildPermissionResolveText,
@@ -91,12 +92,26 @@ export function createInboundRouter(deps: InboundRouterDeps): InboundRouter {
       job.event.delivery,
       midRunDefaultDelivery,
     );
-    await placeSessions.pushMessage({
-      cwd: job.cwd,
-      delivery,
-      key: job.key,
-      text: job.event.text,
-    });
+    try {
+      await placeSessions.pushMessage({
+        cwd: job.cwd,
+        delivery,
+        key: job.key,
+        text: job.event.text,
+      });
+    } catch (error: unknown) {
+      if (
+        !(error instanceof EnsureDenyGlobalError) &&
+        !(error instanceof SessionColdStartError)
+      ) {
+        throw error;
+      }
+      await sendBestEffort(send, {
+        place: job.key,
+        text: error.message,
+        type: 'send_message',
+      });
+    }
   }
 
   const queues = createPlaceMessageQueues({

@@ -23,6 +23,7 @@ const registry = openRegistry(config.registry);
 const openCodeDbPath = join(dirname(config.registry.path), 'opencode.sqlite');
 const sessionPort = createOpenCodeSessionPort({
   createHost: () => createOpenCodeHost({ databasePath: openCodeDbPath }),
+  insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
   loadWorkdirRights: (cwd) => registry.loadWorkdirRights(cwd),
   registryPath: config.registry.path,
 });

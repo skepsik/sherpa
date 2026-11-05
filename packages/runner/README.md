@@ -30,7 +30,7 @@ Lookup: `findCwdByPlaceKey(place)` → `cwd` или `null` (нет ключа).
 
 Резолв: `resolvePathAccess(cwd, targetPath, snapshot, { registryPath })` — вердикт уровня; `buildLaunchRights(snapshot, { registryPath })` — плоский снимок для адаптера (shell выкл; константный запрет файла реестра + sidecar; `foreignClosures` для вложенного `none` под чужим корнем). Реальный путь — walk как open(2) (follow symlink по сегментам, `..` после follow). Grant внутри каталога, закрытого обычным deny целиком — `RightsConfigError`. Кэша снимка между запусками нет: каждый раз load + resolve.
 
-OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold start: `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Mid-run: `interject`→steer, `after`→queue, `session_break`→interrupt. Permission ask → `send_question` / `question_answer` / `answerPermission` (см. ниже). Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
+OpenCode (embedded `@opencode/sdk`): `createOpenCodeSessionPort` — порт 5-1 поверх in-process host. На cold `start`: `ensureDenyGlobalMvp` (недостающие шаблоны MVP в `deny_global`) → `loadWorkdirRights` → `buildLaunchRights` → `expressLaunchRights` → `permissions` в create. Shared host; права Place A не на сессию Place B. Стрим: текст хода собирается (`session.text.ended`) и уходит кусками ≤4096 без потери. Mid-run: `interject`→steer, `after`→queue, `session_break`→interrupt. Permission ask → `send_question` / `question_answer` / `answerPermission` (см. ниже). Idle-timeout вне эпика 5. Кэш сессий — `opencode.sqlite` рядом с файлом реестра. Подробнее: [`src/adapters/opencode/README.md`](src/adapters/opencode/README.md).
 
 Conformance suite (матрица allow/deny/ask без диалекта харнесса): [`src/conformance/README.md`](src/conformance/README.md); драйвер OpenCode fake — `createOpenCodeConformanceDriver`; `npm run test:conformance -w @sherpa/runner` (также в общем `npm test`).
 
@@ -84,7 +84,7 @@ npm run seed -w @sherpa/runner -- deny-global \
   --pattern 'read:**/.env*'
 ```
 
-Типичные шаблоны защиты (`.onto/**`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, секреты) в `deny_global` **не подмешиваются кодом** адаптера/раннера — только руками (или клиентом БД через API). Перед агентом проекта (эпик 6) закрой инструкции в `deny_global`.
+Перед каждым cold `start` продуктовый порт вызывает `ensureDenyGlobalMvp`: идемпотентно дописывает в `deny_global` набор MVP (запись `.onto/**` / `AGENTS.md` / `CLAUDE.md` / `.claude/**`; чтение `**/.env*` с исключением `.env.example`; чтение `~/.ssh` / `~/.aws` / `~/.gnupg` как `read://<HOME>/…`). Чужие строки не трогает. Адаптер / `expressLaunchRights` по-прежнему **не** подмешивает шаблоны в express — только то, что уже в БД после ensure. Ручной seed CLI остаётся. Эпик 6 расширяет запись раннера в `deny_global` (отклонение от канона «Роли БД» / «вручную» — fold отдельно). Отказ ensure → отличимый текст в Place, старт неуспешен; очередь Place не сбрасывается.
 
 Примеры pattern: `write:.onto/**`, `read:**/.env*`, `write:!**/.env.example`, `//absolute/path/**`; без префикса = `write:`.
 
@@ -144,6 +144,7 @@ npm run dev:runner
 - `normalizeWorkdirPath` — нормализация `cwd` / `grant.path` перед записью.
 - `validateDenyPattern` — fail-fast валидация диалекта deny.
 - `resolvePathAccess` / `buildLaunchRights` / `RightsConfigError` — резолв вердикта пути и плоского снимка запуска.
+- `ensureDenyGlobalMvp` / `listMvpDenyGlobalPatterns` / `EnsureDenyGlobalError` — ensure набора MVP в `deny_global` перед cold `start`.
 - `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
 - `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
