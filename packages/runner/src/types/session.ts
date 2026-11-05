@@ -111,6 +111,8 @@ export type SessionTestDouble = SessionPort & {
   readonly calls: SessionDoubleCall[];
   /** Resume бросает обычный Error (не SessionResumeError) — session_id не сбрасывать. */
   crashResumeFor(sessionId: string): void;
+  /** Push бросает SessionResumeError один раз — слот должен cold start. */
+  failPushFor(sessionId: string): void;
   failResumeFor(sessionId: string): void;
   readonly opened: OpenSessionDouble[];
 };

@@ -13,6 +13,7 @@ Embedded runtime (`@opencode/sdk`): in-memory router в процессе ран�
 Порт 5-1: `start` / `resume` / `pushMessage` / `interruptTurn` / `subscribe` / `abort`.
 
 - Resume по `places.session_id`; любая ошибка get → `SessionResumeError` (слот сбросит id и cold start).
+- `pushMessage` / prompt: `SessionNotFoundError` → тот же `SessionResumeError`; слот сбрасывает id, cold start и **один** повторный push. Инвентарь кейсов — `design/session.md` «Кейсы потери сессии».
 - `pushMessage` delivery: `interject` → OpenCode **steer**, `after` → **queue**; `interruptTurn` → host interrupt (ход, не closed).
 - Ассистентский текст: `session.text.ended` → собранный текст → `assistant_text` кусками ≤4096 (мульти-`send_message` у роутера).
 - Нормальный конец хода (`execution.succeeded`) сессию не закрывает; `session_id` сохраняется.

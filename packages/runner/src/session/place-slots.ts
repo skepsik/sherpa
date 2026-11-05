@@ -19,6 +19,8 @@ type PlaceSlotState = {
   live: LiveHandle | null;
 };
 
+type PushMessageInput = Parameters<PlaceSessionSlots['pushMessage']>[0];
+
 /**
  * ≤1 живой handle на Place; generation после смерти — в старый канал нельзя.
  * Cold start / resume → сразу user-текст из Place, без runner-prompt.
@@ -159,15 +161,29 @@ export function createPlaceSessionSlots(
       await slot.live.session.interruptTurn();
     },
     async pushMessage(input) {
-      const handle = await ensureLiveHandle(input.key, input.cwd);
-      const slot = getOrCreateSlot(input.key);
-      if (handle.generation !== slot.generation) {
-        throw new Error(
-          `pushMessage: чужой generation (${handle.generation}≠${slot.generation})`,
-        );
-      }
-
-      await handle.session.pushMessage(input.text, input.delivery);
+      await pushWithStaleSessionRetry(input, false);
     },
   };
+
+  async function pushWithStaleSessionRetry(
+    input: PushMessageInput,
+    retried: boolean,
+  ): Promise<void> {
+    const handle = await ensureLiveHandle(input.key, input.cwd);
+    const slot = getOrCreateSlot(input.key);
+    if (handle.generation !== slot.generation) {
+      throw new Error(
+        `pushMessage: чужой generation (${handle.generation}≠${slot.generation})`,
+      );
+    }
+
+    try {
+      await handle.session.pushMessage(input.text, input.delivery);
+    } catch (error: unknown) {
+      if (retried || !(error instanceof SessionResumeError)) throw error;
+      if (slot.live === handle) markDead(slot, handle);
+      setPlaceSessionId(input.key, '');
+      await pushWithStaleSessionRetry(input, true);
+    }
+  }
 }

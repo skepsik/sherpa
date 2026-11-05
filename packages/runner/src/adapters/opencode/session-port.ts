@@ -218,11 +218,18 @@ export function createOpenCodeSessionPort(
           throw new Error(`pushMessage: сессия закрыта (${sessionId})`);
         }
         const host = await ensureHost();
-        await host.prompt({
-          delivery: mapDeliveryToOpenCode(delivery),
-          sessionId,
-          text,
-        });
+        try {
+          await host.prompt({
+            delivery: mapDeliveryToOpenCode(delivery),
+            sessionId,
+            text,
+          });
+        } catch (error: unknown) {
+          if (isSessionNotFoundError(error)) {
+            throw new SessionResumeError(sessionId, error);
+          }
+          throw error;
+        }
       },
       get sessionId() {
         return sessionId;
@@ -273,6 +280,16 @@ function formatHostError(error: unknown) {
     if (typeof message === 'string' && message !== '') return message;
   }
   return 'ошибка хода OpenCode';
+}
+
+/** Удалённая/пропавшая сессия OpenCode — слот сбросит id и cold start. */
+function isSessionNotFoundError(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const tagged = error as { _tag?: unknown; name?: unknown };
+  return (
+    tagged._tag === 'SessionNotFoundError' ||
+    tagged.name === 'SessionNotFoundError'
+  );
 }
 
 function mapDeliveryToOpenCode(delivery: MessageDelivery) {

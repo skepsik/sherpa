@@ -35,6 +35,7 @@ export function createSessionTestDouble(
   const opened: OpenSessionDouble[] = [];
   const resumeFailIds = new Set<string>();
   const resumeCrashIds = new Set<string>();
+  const pushFailIds = new Set<string>();
   let nextSeq = 1;
 
   function openSession(sessionId: string): OpenSessionDouble {
@@ -133,6 +134,10 @@ export function createSessionTestDouble(
         if (!alive) {
           throw new Error(`pushMessage: сессия закрыта (${sessionId})`);
         }
+        if (pushFailIds.has(sessionId)) {
+          pushFailIds.delete(sessionId);
+          throw new SessionResumeError(sessionId);
+        }
         calls.push({ delivery, sessionId, text, type: 'push' });
         pushes.push({ delivery, text });
         pendingTexts.push(text);
@@ -158,6 +163,9 @@ export function createSessionTestDouble(
     calls,
     crashResumeFor(sessionId) {
       resumeCrashIds.add(sessionId);
+    },
+    failPushFor(sessionId) {
+      pushFailIds.add(sessionId);
     },
     failResumeFor(sessionId) {
       resumeFailIds.add(sessionId);
