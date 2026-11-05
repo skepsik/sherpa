@@ -46,9 +46,7 @@ Conformance suite (матрица allow/deny/ask без диалекта хар�
 
 Харнесс → событие `permission_ask` (action + resource + requestId харнесса) → раннер шлёт `send_question` в Place: кнопки с `data` из алфавита **`allow` | `deny` | `always`** (текст смысла не в `data`). На проводе — короткий wire `requestId` (`pN`); бюджет `requestId`+`data` ≤48 байт UTF-8 на кнопку. Ответ `question_answer` → маппинг в решение порта: `allow`→`once`, `always`→`always`, `deny`→`reject` → `answerPermission` → харнесс; UI закрывается `resolve_question`. `deny` / `deny_global` / константный запрет реестра / явный `grant none` / shell подтверждением не снимаются (`resolvePathAccess` + сверка): даже на `allow`/`always` в харнесс уходит `reject`. Нет pending (рестарт / повтор / чужой id) — drop + log, без stub-ack. Teardown (closed / error / abort) снимает pending, best-effort `resolve_question`, поздний ответ — как «нет pending». Pending ask — память процесса; после рестарта раннера из БД не восстанавливается.
 
-Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем push. Resume-fail → сброс `session_id` + cold start. `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
-
-Дневник проекта — конвенция в `cwd`; шерпа путь не задаёт и в реестре не хранит. Nudges = обычные ходы через внутренний `pushMessage` (не invent «system при create»). Порядок cold start: `start` → diary-read nudge → ожидание конца этого хода → user text. Resume без cold start — повторный read-nudge не шлётся. На нормальный `turn_ended`, если за ход был user-вклад задачи (Place `pushMessage`), — fixation-nudge; ход только с runner-nudge фиксацию не триггерит (нет цикла). Nudge-only ход: в Place нет `send_message` ответа и нет `set_status` busy/idle (`nudgeOnly` на событии от слота → фильтр в `inbound-router`). Ошибка push nudge — log; слот не роняется.
+Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем сразу user-текст из Place. Resume-fail → сброс `session_id` + cold start. Раннер не добавляет во вход харнесса текстов сверх входящего чата. Каждый `assistant_text` хода зеркалируется в Place (`send_message`). `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
 
 В процессе раннера — OpenCode-порт; для тестов без модели — fake host (`tests/opencode-fake-host.ts`) или прежний `createSessionTestDouble`.
 
@@ -147,7 +145,7 @@ npm run seed -w @sherpa/runner -- \
 ```
 
 3. Поднять бота (канал) и раннер: `npm run dev:bot` / `npm run dev:runner`.
-4. Написать в seed-Place — cold `start` (внутри `ensureDenyGlobalMvp` → права → express) → diary-read nudge → текст пользователя → ответ ассистента в то же Place; `session_id` в `places`. Permission ask — кнопки в то же Place.
+4. Написать в seed-Place — cold `start` (внутри `ensureDenyGlobalMvp` → права → express) → текст пользователя → ответ ассистента в то же Place; `session_id` в `places`. Permission ask — кнопки в то же Place.
 
 Приёмка happy path (fake host, без сети к модели): `npm run test -w @sherpa/runner -- tests/project-agent-acceptance.test.ts`.
 
@@ -170,7 +168,6 @@ npm run dev:runner
 - `ensureDenyGlobalMvp` / `listMvpDenyGlobalPatterns` / `EnsureDenyGlobalError` — ensure набора MVP в `deny_global` перед cold `start`.
 - `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
 - `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
-- `DIARY_READ_NUDGE_TEXT` / `DIARY_FIXATION_NUDGE_TEXT` — тексты diary-nudge.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, loadWorkdirRights, midRunDefaultDelivery, registryPath, sessionPort, send })` → `{ handleInbound }`.
 - `loadMidRunDefaultDelivery` — `SHERPA_MID_RUN_DELIVERY` / дефолт `interject`.

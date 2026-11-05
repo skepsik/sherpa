@@ -13,6 +13,61 @@ import {
 } from '../src/session';
 
 void describe('place session slots', () => {
+  void it('cold start: start → сразу user text; runner-prompt нет', async () => {
+    const port = createSessionTestDouble();
+    const sessionIds = new Map<string, string>([['place-a', '']]);
+    const slots = createPlaceSessionSlots({
+      getPlaceSessionId: (key) => sessionIds.get(key) ?? '',
+      onEvent: () => undefined,
+      sessionPort: port,
+      setPlaceSessionId: (key, id) => {
+        sessionIds.set(key, id);
+      },
+    });
+
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'задача',
+    });
+    await settle();
+
+    const sequence = port.calls
+      .filter((c) => c.type === 'start' || c.type === 'push')
+      .map((c) => {
+        if (c.type === 'start') return 'start';
+        return c.text;
+      });
+
+    assert.deepEqual(sequence, ['start', 'задача']);
+  });
+
+  void it('ход с user push → на turn_ended runner-prompt нет', async () => {
+    const port = createSessionTestDouble();
+    const sessionIds = new Map<string, string>([['place-a', 's1']]);
+    const slots = createPlaceSessionSlots({
+      getPlaceSessionId: (key) => sessionIds.get(key) ?? '',
+      onEvent: () => undefined,
+      sessionPort: port,
+      setPlaceSessionId: (key, id) => {
+        sessionIds.set(key, id);
+      },
+    });
+
+    await slots.pushMessage({
+      cwd: '/tmp/a',
+      delivery: 'interject',
+      key: 'place-a',
+      text: 'работа',
+    });
+    await settle();
+
+    const pushes = port.calls.filter((c) => c.type === 'push');
+    assert.equal(pushes.length, 1);
+    assert.equal(pushes[0]?.type === 'push' && pushes[0].text, 'работа');
+  });
+
   void it('resume ≠ SessionResumeError — session_id не сбрасывается, start нет', async () => {
     const port = createSessionTestDouble();
     port.crashResumeFor('keep-me');
@@ -45,7 +100,6 @@ void describe('place session slots', () => {
 
   void it('после closed события старого handle (turn_ended) не в onEvent', async () => {
     const controllable = createControllablePort();
-    // resume — без cold diary-wait (noop push не эмитит turn_ended)
     const sessionIds = new Map([['place-a', 'ctrl-pre']]);
     const forwarded: SessionEvent['type'][] = [];
 
@@ -242,4 +296,15 @@ function createControllablePort() {
     },
     port,
   };
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+async function settle() {
+  for (let i = 0; i < 40; i += 1) {
+    await Promise.resolve();
+  }
+  await delay(40);
 }
