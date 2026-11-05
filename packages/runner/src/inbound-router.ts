@@ -352,8 +352,6 @@ async function handleSessionEvent(
 ) {
   switch (event.type) {
     case 'assistant_text':
-      // Nudge-only ход — только во вход харнесса, в Place не зеркалировать.
-      if (event.nudgeOnly === true) return;
       await sendBestEffort(ctx.send, {
         place: key,
         text: event.text,
@@ -376,7 +374,6 @@ async function handleSessionEvent(
       await handlePermissionAsk(key, event, ctx);
       return;
     case 'turn_ended':
-      if (event.nudgeOnly === true) return;
       await sendBestEffort(ctx.send, {
         place: key,
         status: 'idle',
@@ -384,7 +381,6 @@ async function handleSessionEvent(
       });
       return;
     case 'turn_started':
-      if (event.nudgeOnly === true) return;
       await sendBestEffort(ctx.send, {
         place: key,
         status: 'busy',

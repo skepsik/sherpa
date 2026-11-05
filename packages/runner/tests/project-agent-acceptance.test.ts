@@ -13,10 +13,6 @@ import { createOpenCodeSessionPort } from '../src/adapters/opencode';
 import { createInboundRouter } from '../src/inbound-router';
 import { openRegistry } from '../src/registry';
 import { listMvpDenyGlobalPatterns, resolvePathAccess } from '../src/rights';
-import {
-  DIARY_FIXATION_NUDGE_TEXT,
-  DIARY_READ_NUDGE_TEXT,
-} from '../src/session';
 import { createOpenCodeFakeHost } from './opencode-fake-host';
 
 void describe('project agent acceptance (эпик 6)', () => {
@@ -78,7 +74,13 @@ void describe('project agent acceptance (эпик 6)', () => {
       2000,
     );
     await waitFor(
-      () => host.prompts.some((p) => p.text === DIARY_FIXATION_NUDGE_TEXT),
+      () =>
+        sent.some(
+          (c) =>
+            c.type === 'set_status' &&
+            c.status === 'idle' &&
+            c.place === placeKey,
+        ),
       2000,
     );
     await settle();
@@ -98,19 +100,7 @@ void describe('project agent acceptance (эпик 6)', () => {
     );
 
     const promptTexts = host.prompts.map((p) => p.text);
-    assert.ok(
-      promptTexts[0] === DIARY_READ_NUDGE_TEXT,
-      'diary-nudge до user text',
-    );
-    assert.ok(
-      promptTexts.includes(userText),
-      'user text ушёл в харнесс после nudge',
-    );
-    const readIdx = promptTexts.indexOf(DIARY_READ_NUDGE_TEXT);
-    const userIdx = promptTexts.indexOf(userText);
-    const fixationIdx = promptTexts.indexOf(DIARY_FIXATION_NUDGE_TEXT);
-    assert.ok(readIdx >= 0 && userIdx > readIdx);
-    assert.ok(fixationIdx > userIdx, 'fixation после user text');
+    assert.deepEqual(promptTexts, [userText], 'cold start: сразу user text');
 
     const placeMessages = sent.filter((c) => c.type === 'send_message');
     assert.ok(
@@ -120,13 +110,9 @@ void describe('project agent acceptance (эпик 6)', () => {
     );
     assert.ok(
       !placeMessages.some(
-        (c) =>
-          c.type === 'send_message' &&
-          (c.text === `mock:${DIARY_READ_NUDGE_TEXT}` ||
-            c.text === `mock:${DIARY_FIXATION_NUDGE_TEXT}` ||
-            c.text === 'Принято.'),
+        (c) => c.type === 'send_message' && c.text === 'Принято.',
       ),
-      'в Place нет nudge-only echo и нет stub',
+      'в Place нет stub',
     );
     assert.equal(
       placeMessages.filter(
@@ -141,8 +127,8 @@ void describe('project agent acceptance (эпик 6)', () => {
     const idle = sent.filter(
       (c) => c.type === 'set_status' && c.status === 'idle',
     );
-    assert.equal(busy.length, 1, 'busy только task-ход');
-    assert.equal(idle.length, 1, 'idle только task-ход');
+    assert.equal(busy.length, 1, 'busy на task-ход');
+    assert.equal(idle.length, 1, 'idle на task-ход');
 
     const patterns = registry
       .loadWorkdirRights(cwd)
