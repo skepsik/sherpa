@@ -14,7 +14,12 @@ import {
 } from '../src/adapters/opencode';
 import { openRegistry } from '../src/registry';
 import { buildLaunchRights } from '../src/rights';
-import { createPlaceSessionSlots, SessionResumeError } from '../src/session';
+import {
+  createPlaceSessionSlots,
+  DIARY_FIXATION_NUDGE_TEXT,
+  DIARY_READ_NUDGE_TEXT,
+  SessionResumeError,
+} from '../src/session';
 import { createOpenCodeFakeHost } from './opencode-fake-host';
 
 void describe('opencode session port (fake host)', () => {
@@ -95,8 +100,12 @@ void describe('opencode session port (fake host)', () => {
       text: 'job',
     });
     await waitFor(
-      () => outbound.some((event) => event.type === 'turn_ended'),
-      1000,
+      () =>
+        outbound.some(
+          (event) =>
+            event.type === 'assistant_text' && event.text === 'mock:job',
+        ),
+      2000,
     );
 
     assert.ok(registry.getPlaceSessionId(placeKey).startsWith('ses_fake_'));
@@ -105,7 +114,34 @@ void describe('opencode session port (fake host)', () => {
         (event) => event.type === 'assistant_text' && event.text === 'mock:job',
       ),
     );
-
+    assert.deepEqual(host.prompts.map((p) => p.text).slice(0, 2), [
+      DIARY_READ_NUDGE_TEXT,
+      'job',
+    ]);
+    const diaryStarted = outbound.find(
+      (event) => event.type === 'turn_started' && event.nudgeOnly === true,
+    );
+    const diaryText = outbound.find(
+      (event) =>
+        event.type === 'assistant_text' &&
+        event.text === `mock:${DIARY_READ_NUDGE_TEXT}`,
+    );
+    assert.ok(diaryStarted, 'diary turn_started nudgeOnly');
+    assert.equal(
+      diaryText?.type === 'assistant_text' && diaryText.nudgeOnly,
+      true,
+    );
+    const jobText = outbound.find(
+      (event) => event.type === 'assistant_text' && event.text === 'mock:job',
+    );
+    assert.equal(
+      jobText?.type === 'assistant_text' && jobText.nudgeOnly,
+      false,
+    );
+    await waitFor(
+      () => host.prompts.some((p) => p.text === DIARY_FIXATION_NUDGE_TEXT),
+      2000,
+    );
     registry.close();
   });
 

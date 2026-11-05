@@ -48,6 +48,8 @@ Conformance suite (матрица allow/deny/ask без диалекта хар�
 
 Слот места (`createPlaceSessionSlots`): ≤1 живой handle и generation; после смерти handle писать в старый канал нельзя. Drain очереди `message`: живой handle → push сразу (в т.ч. mid-run); мёртвый → resume по `places.session_id` или cold `start`, затем push. Resume-fail → сброс `session_id` + cold start. `set_status` busy/idle — по `turn_started` / `turn_ended`, не на каждый push job.
 
+Дневник проекта — конвенция в `cwd`; шерпа путь не задаёт и в реестре не хранит. Nudges = обычные ходы через внутренний `pushMessage` (не invent «system при create»). Порядок cold start: `start` → diary-read nudge → ожидание конца этого хода → user text. Resume без cold start — повторный read-nudge не шлётся. На нормальный `turn_ended`, если за ход был user-вклад задачи (Place `pushMessage`), — fixation-nudge; ход только с runner-nudge фиксацию не триггерит (нет цикла). Nudge-only ход: в Place нет `send_message` ответа и нет `set_status` busy/idle (`nudgeOnly` на событии от слота → фильтр в `inbound-router`). Ошибка push nudge — log; слот не роняется.
+
 В процессе раннера — OpenCode-порт; для тестов без модели — fake host (`tests/opencode-fake-host.ts`) или прежний `createSessionTestDouble`.
 
 ### Seed одного каталога и места
@@ -147,6 +149,7 @@ npm run dev:runner
 - `ensureDenyGlobalMvp` / `listMvpDenyGlobalPatterns` / `EnsureDenyGlobalError` — ensure набора MVP в `deny_global` перед cold `start`.
 - `expressLaunchRights` / `OpenCodeExpressError` / `createOpenCodeSessionPort` / `createOpenCodeHost` — адаптер OpenCode (`src/adapters/opencode`).
 - `createSessionTestDouble` / `createPlaceSessionSlots` / `SessionResumeError` — double порта и слот места.
+- `DIARY_READ_NUDGE_TEXT` / `DIARY_FIXATION_NUDGE_TEXT` — тексты diary-nudge.
 - `createChannelClient({ config, onInbound })` → `{ start, stop, send }`.
 - `createInboundRouter({ findCwdByPlaceKey, getPlaceSessionId, setPlaceSessionId, loadWorkdirRights, midRunDefaultDelivery, registryPath, sessionPort, send })` → `{ handleInbound }`.
 - `loadMidRunDefaultDelivery` — `SHERPA_MID_RUN_DELIVERY` / дефолт `interject`.
