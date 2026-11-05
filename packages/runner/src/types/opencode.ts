@@ -6,8 +6,8 @@ import type {
 import type { SessionEvent } from './session';
 
 /**
- * Узкий шов embedded-host: сессии, prompt, события, permission reply.
- * Реальный — `@opencode/sdk`; в тестах — fake без модели.
+ * Узкий шов host: сессии, prompt, события, permission reply.
+ * Реальный — service (`@opencode/client`) или embed (`@opencode/sdk`); в тестах — fake.
  */
 export type OpenCodeHost = {
   close(): Promise<void>;

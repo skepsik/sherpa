@@ -21,8 +21,16 @@ const config = loadRunnerConfig();
 const registry = openRegistry(config.registry);
 /** Кэш сессий OpenCode рядом с реестром (resume после рестарта раннера). */
 const openCodeDbPath = join(dirname(config.registry.path), 'opencode.sqlite');
+/** Опциональный override модели; нет — opencode.json cwd / дефолт OpenCode. */
+const openCodeModel = process.env.SHERPA_OPENCODE_MODEL?.trim();
 const sessionPort = createOpenCodeSessionPort({
-  createHost: () => createOpenCodeHost({ databasePath: openCodeDbPath }),
+  createHost: () =>
+    createOpenCodeHost({
+      databasePath: openCodeDbPath,
+      ...(openCodeModel !== undefined && openCodeModel !== ''
+        ? { model: openCodeModel }
+        : {}),
+    }),
   insertDenyGlobal: (input) => registry.insertDenyGlobal(input),
   loadWorkdirRights: (cwd) => registry.loadWorkdirRights(cwd),
   registryPath: config.registry.path,

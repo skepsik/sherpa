@@ -11,6 +11,7 @@
     "test:conformance": "tsx --test tests/conformance.test.ts"
   },
   "dependencies": {
+    "@opencode/client": "^2.2.5",
     "@opencode/sdk": "^2.2.5",
     "@sherpa/contract": "*",
     "dotenv": "^18.0.9",

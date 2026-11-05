@@ -15,3 +15,6 @@ dist/
 
 design
 issues
+
+# Локальный пробный проект (seed в реестр, не в git)
+/probe-project/
